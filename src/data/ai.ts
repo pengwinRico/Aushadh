@@ -5,9 +5,10 @@
  * `insertMedicine` creates it.
  *
  * The endpoint is OpenAI-compatible, so the same code talks to a model on this machine
- * (Ollama, LM Studio) or to a hosted one. The address and the model come from `.env` —
- * see `.env.example` — and the key comes from there too, unless one was typed into
- * Settings, which wins. A call that fails throws with a message the form can show;
+ * (Ollama, LM Studio) or to a hosted one. Every part of the address — the base URL, the
+ * model and the key — comes from `.env` (see `.env.example`) unless the user typed one
+ * into Settings, which wins. That is what lets a build with no endpoint at all be pointed
+ * at one without a rebuild. A call that fails throws with a message the form can show;
  * nothing is written to the cabinet.
  */
 export type MedicineReading = {
@@ -19,6 +20,17 @@ export type MedicineReading = {
   category: string;
 };
 
+/**
+ * What the app knows about where the model is. Anything typed into Settings arrives here;
+ * an empty value falls back to what the app was built with, and the key is optional
+ * because a model on this machine does not ask for one.
+ */
+export type AiConfig = {
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+};
+
 export type ReadMedicineInput = {
   /** What the user typed, if anything. */
   name?: string;
@@ -26,8 +38,8 @@ export type ReadMedicineInput = {
   photo?: string;
   /** The groups already on the shelf, so the model reuses them instead of inventing one. */
   groups?: string[];
-  /** The key typed into Settings; empty falls back to the one the app was built with. */
-  apiKey?: string;
+  /** The address, the model and the key, as Settings holds them. */
+  config?: AiConfig;
 };
 
 /** A local model can take a while to think; a request that never lands is worse. */
@@ -38,9 +50,9 @@ export async function readMedicine({
   name = '',
   photo,
   groups = [],
-  apiKey: typedKey,
+  config,
 }: ReadMedicineInput): Promise<MedicineReading> {
-  const { url, model, apiKey } = endpoint(typedKey);
+  const { url, model, apiKey } = endpoint(config);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let response: Response;
@@ -89,40 +101,75 @@ export async function readMedicine({
 }
 
 /**
- * Where the model lives, from `.env`. The Settings screen shows the same pair, and the
- * form's error names the settings a build is missing.
+ * A URL typed by hand may arrive with a trailing slash, or as the whole call address
+ * copied from a provider's page. Both are stripped, so either shape can be pasted in.
  */
-function configured() {
-  const url = process.env.EXPO_PUBLIC_AI_BASE_URL?.replace(/\/+$/, '');
-  const model = process.env.EXPO_PUBLIC_AI_MODEL;
+export function normaliseBaseUrl(value: string | undefined) {
+  return (value ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/+$/, '');
+}
+
+/** A hand-typed endpoint has to be one the app can post to; empty means "use the build's". */
+export function isUsableBaseUrl(value: string) {
+  const url = normaliseBaseUrl(value);
+
+  return url === '' || /^https?:\/\/\S+$/i.test(url);
+}
+
+/** Where the model lives: what Settings holds first, then what the app was built with. */
+function configured(config: AiConfig = {}) {
+  const url =
+    normaliseBaseUrl(config.baseUrl) || normaliseBaseUrl(process.env.EXPO_PUBLIC_AI_BASE_URL);
+  const model = (config.model ?? '').trim() || (process.env.EXPO_PUBLIC_AI_MODEL ?? '').trim();
 
   return url && model ? { url, model } : null;
 }
 
 /**
- * The endpoint a call uses: the address and the model from the build, and the key typed
- * into Settings when there is one — a key the user brought with them beats the one the
- * app was built with.
+ * The endpoint a call uses: the address, the model and the key, each taken from Settings
+ * when it holds one and from the build when it does not.
  */
-function endpoint(typedKey?: string) {
-  const setup = configured();
+function endpoint(config?: AiConfig) {
+  const setup = configured(config);
 
   if (!setup) {
     throw new Error(
-      'No AI is set up yet. This build has no EXPO_PUBLIC_AI_BASE_URL and EXPO_PUBLIC_AI_MODEL.',
+      'No AI is set up yet. Add an endpoint and a model in Settings, or build the app with EXPO_PUBLIC_AI_BASE_URL and EXPO_PUBLIC_AI_MODEL.',
     );
   }
 
-  return { ...setup, apiKey: typedKey?.trim() || process.env.EXPO_PUBLIC_AI_API_KEY };
+  const apiKey =
+    (config?.apiKey ?? '').trim() || (process.env.EXPO_PUBLIC_AI_API_KEY ?? '').trim();
+
+  return { ...setup, apiKey };
 }
 
-/** The host and model a Settings screen can name, or `null` when the build has neither. */
-export function aiSetup() {
-  const setup = configured();
+/** What the app was built with — the values a Settings screen shows as the fallback. */
+export function builtInAi() {
+  return {
+    baseUrl: normaliseBaseUrl(process.env.EXPO_PUBLIC_AI_BASE_URL),
+    model: (process.env.EXPO_PUBLIC_AI_MODEL ?? '').trim(),
+    /** True when the build shipped a key, which one typed in Settings replaces. */
+    hasKey: Boolean((process.env.EXPO_PUBLIC_AI_API_KEY ?? '').trim()),
+  };
+}
 
-  return setup
-    ? { host: setup.url.replace(/^https?:\/\//, ''), model: setup.model }
-    : null;
+/**
+ * Where a call would go with these settings, for the panel to print. `ready` stays false
+ * until an endpoint and a model are known from one place or the other — a key is optional,
+ * because a model on this machine does not ask for one.
+ */
+export function aiSetup(config: AiConfig = {}) {
+  const setup = configured(config);
+
+  return {
+    ready: setup !== null,
+    /** The whole address the form would post to, empty until both halves are known. */
+    callUrl: setup ? `${setup.url}/chat/completions` : '',
+  };
 }
 
 /**
@@ -139,7 +186,8 @@ function instructions(groups: string[]) {
     'dose: the strength and form, such as "500 mg" or "10 ml". Empty when it is not visible.',
     'purpose: one short sentence in everyday words saying what the medicine is used for.',
     'No advice, no warnings, no dosage instructions.',
-    'category: the group it belongs to, as a short everyday name.',
+    'category: the group it belongs to, as a short everyday name of two or three words,',
+    'such as "Fever & Pain" or "Vitamins".',
     groups.length
       ? `Prefer one of the groups already in the cabinet: ${groups.join(', ')}.`
       : '',
@@ -167,27 +215,69 @@ function question({ name, photo }: { name: string; photo?: string }) {
 }
 
 /**
- * Read the model's answer. Small models sometimes wrap their JSON in prose or a code
- * fence, so the object is cut out of the answer rather than parsed whole.
+ * Every well-formed `{...}` in the answer, in the order they appear, braces inside strings
+ * left alone. A model that thinks out loud before answering — Gemma brackets its reasoning in
+ * `<thought>`, prose and all — can put braces of its own ahead of the reading.
+ */
+function objects(answer: string) {
+  const found: string[] = [];
+
+  for (let start = answer.indexOf('{'); start !== -1; start = answer.indexOf('{', start + 1)) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+
+    for (let i = start; i < answer.length; i++) {
+      const char = answer[i];
+
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') quoted = !quoted;
+      else if (quoted) continue;
+      else if (char === '{') depth++;
+      else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          found.push(answer.slice(start, i + 1));
+          break;
+        }
+      }
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Read the model's answer. Small models wrap their JSON in prose or a code fence, and a
+ * thinking model reasons ahead of it, so every object in the answer is tried and the last one
+ * that names a medicine is the reading — the answer is written after the reasoning.
  */
 export function parseReading(answer: string): MedicineReading {
-  const start = answer.indexOf('{');
-  const end = answer.lastIndexOf('}');
+  const candidates = objects(answer)
+    .map((candidate) => {
+      try {
+        const parsed: unknown = JSON.parse(candidate);
 
-  if (start === -1 || end <= start) {
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter((parsed) => parsed !== null);
+
+  if (!candidates.length) {
     throw new Error('The AI did not answer with a medicine. Try a clearer photo.');
   }
 
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(answer.slice(start, end + 1));
-  } catch {
-    throw new Error('The AI answered in a form the app could not read. Nothing was added.');
-  }
+  const named = (parsed: Record<string, unknown>) =>
+    typeof parsed.name === 'string' && parsed.name.trim() !== '';
+  const parsed = [...candidates].reverse().find(named) ?? candidates[candidates.length - 1];
 
   const field = (key: keyof MedicineReading) => {
-    const value = (parsed as Record<string, unknown>)[key];
+    const value = parsed[key];
 
     return typeof value === 'string' ? value.trim() : '';
   };

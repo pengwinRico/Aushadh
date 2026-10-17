@@ -10,16 +10,24 @@ import {
 import { Appearance } from 'react-native';
 
 import type { ThemeName } from '@/constants/theme';
+import { normaliseBaseUrl } from '@/data/ai';
 import { readSettings, writeSettings } from '@/data/database';
 import { DEFAULT_SETTINGS, type Settings } from '@/data/settings-types';
+
+/** The three values that together say where the AI is. Empty means "what the app was built with". */
+export type AiSettings = {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+};
 
 type SettingsContextValue = Settings & {
   /** False until the stored settings have been read; the splash waits on it. */
   isReady: boolean;
   /** Switch the theme. The screen changes at once; the store follows. */
   setTheme: (theme: ThemeName) => Promise<void>;
-  /** Keep the key the user typed. Throws when the store cannot write it. */
-  saveAiKey: (key: string) => Promise<void>;
+  /** Keep the endpoint, the model and the key the user typed. Throws when the store cannot write. */
+  saveAi: (config: AiSettings) => Promise<void>;
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -34,12 +42,13 @@ export function useSettings() {
 }
 
 /**
- * The theme and the AI key for the whole app.
+ * The theme and where the AI is, for the whole app.
  *
- * The theme lives here rather than in the OS scheme because the app offers its own
- * switch: `useTheme()` reads it, so every screen and component follows without knowing
- * where the choice came from. The key is kept beside it so a user can bring their own
- * without rebuilding the app.
+ * The theme lives here rather than in the OS scheme because the app offers its own switch:
+ * `useTheme()` reads it, so every screen and component follows without knowing where the
+ * choice came from. The endpoint, the model and the key are kept beside it, so a build that
+ * shipped without an AI — or with one the user would rather not use — can still be pointed
+ * at a model from the app itself.
  */
 export function SettingsProvider({ children }: PropsWithChildren) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -80,16 +89,21 @@ export function SettingsProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
-  const saveAiKey = useCallback(async (key: string) => {
-    const aiKey = key.trim();
+  const saveAi = useCallback(async (config: AiSettings) => {
+    const next = {
+      // Stored the way the call will use them, so the field and the request agree.
+      aiBaseUrl: normaliseBaseUrl(config.baseUrl),
+      aiModel: config.model.trim(),
+      aiKey: config.apiKey.trim(),
+    };
 
-    await writeSettings({ aiKey });
-    setSettings((current) => ({ ...current, aiKey }));
+    await writeSettings(next);
+    setSettings((current) => ({ ...current, ...next }));
   }, []);
 
   const value = useMemo(
-    () => ({ ...settings, isReady, setTheme, saveAiKey }),
-    [settings, isReady, setTheme, saveAiKey],
+    () => ({ ...settings, isReady, setTheme, saveAi }),
+    [settings, isReady, setTheme, saveAi],
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

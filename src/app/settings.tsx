@@ -10,7 +10,7 @@ import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useSettings } from '@/context/settings';
-import { aiSetup } from '@/data/ai';
+import { aiSetup, builtInAi, isUsableBaseUrl, normaliseBaseUrl } from '@/data/ai';
 import { useTheme } from '@/hooks/use-theme';
 
 const closeIcon = { ios: 'xmark', android: 'close', web: 'close' } as const;
@@ -32,49 +32,75 @@ const themeOptions: readonly Segment<'light' | 'dark'>[] = [
  * Settings, reachable from every tab.
  *
  * Two things live here: the theme, which repaints the whole app the moment it changes, and
- * the key the model is called with, so a user can bring their own instead of using the one
- * the app was built with. Both are kept on the device.
+ * where the AI is — the endpoint, the model and the key. All three are kept on the device,
+ * and an empty field means "use the one the app was built with", so a build that shipped
+ * with no AI at all can still be pointed at a model without being rebuilt.
  */
 export default function SettingsScreen() {
   const theme = useTheme();
-  const { theme: themeName, aiKey, setTheme, saveAiKey } = useSettings();
-  const setup = aiSetup();
+  const { theme: themeName, aiBaseUrl, aiModel, aiKey, setTheme, saveAi } = useSettings();
+  const builtIn = builtInAi();
 
-  const [draft, setDraft] = useState(aiKey);
+  const [endpoint, setEndpoint] = useState(aiBaseUrl);
+  const [model, setModel] = useState(aiModel);
+  const [key, setKey] = useState(aiKey);
   const [revealed, setRevealed] = useState(false);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  const changed = draft.trim() !== aiKey;
+  const typed = {
+    // Stored the way the call uses it, so what is saved is what is called.
+    baseUrl: normaliseBaseUrl(endpoint),
+    model: model.trim(),
+    apiKey: key.trim(),
+  };
+  const changed =
+    typed.baseUrl !== aiBaseUrl || typed.model !== aiModel || typed.apiKey !== aiKey;
   const saving = status === 'saving';
+  const badEndpoint = isUsableBaseUrl(endpoint)
+    ? null
+    : 'An endpoint starts with http:// or https://.';
+  const setup = aiSetup({ baseUrl: endpoint, model });
+  const isSet = Boolean(aiBaseUrl || aiModel || aiKey);
 
-  async function saveKey() {
-    if (!changed || saving) return;
+  function edit(set: (value: string) => void) {
+    return (value: string) => {
+      set(value);
+      setStatus('idle');
+      setError(null);
+    };
+  }
+
+  async function save() {
+    if (!changed || saving || badEndpoint) return;
 
     setStatus('saving');
     setError(null);
 
     try {
-      await saveAiKey(draft);
-      setDraft(draft.trim());
+      await saveAi(typed);
+      setEndpoint(typed.baseUrl);
       setStatus('saved');
     } catch (caught) {
       setStatus('failed');
-      setError(caught instanceof Error ? caught.message : 'Could not save the key.');
+      setError(caught instanceof Error ? caught.message : 'Could not save that.');
     }
   }
 
-  async function clearKey() {
+  async function clear() {
     setStatus('saving');
     setError(null);
 
     try {
-      await saveAiKey('');
-      setDraft('');
+      await saveAi({ baseUrl: '', model: '', apiKey: '' });
+      setEndpoint('');
+      setModel('');
+      setKey('');
+      setRevealed(false);
       setStatus('saved');
     } catch (caught) {
       setStatus('failed');
-      setError(caught instanceof Error ? caught.message : 'Could not clear the key.');
+      setError(caught instanceof Error ? caught.message : 'Could not clear that.');
     }
   }
 
@@ -114,22 +140,48 @@ export default function SettingsScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: theme.surface }]}>
-          <ThemedText type="title">AI key</ThemedText>
+          <ThemedText type="title">AI</ThemedText>
           <ThemedText type="note" themeColor="textSecondary">
-            {setup
-              ? `Sent to ${setup.host}, asking ${setup.model}.`
-              : 'This build has no AI endpoint, so a key alone cannot read a pack.'}
+            {setup.ready
+              ? 'A pack is read by this endpoint. An empty field uses what the app was built with.'
+              : 'An endpoint and a model are all it takes. A key is only needed when the endpoint asks for one.'}
           </ThemedText>
 
           <TextField
-            value={draft}
-            onChangeText={(value) => {
-              setDraft(value);
-              setStatus('idle');
-              setError(null);
-            }}
-            label="Your key"
-            placeholder="Paste the key from your AI provider"
+            value={endpoint}
+            onChangeText={edit(setEndpoint)}
+            label="Endpoint"
+            placeholder={builtIn.baseUrl || 'https://host/v1'}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
+            textContentType="none"
+            keyboardType="url"
+            inputMode="url"
+            accessibilityLabel="AI endpoint"
+          />
+
+          <TextField
+            value={model}
+            onChangeText={edit(setModel)}
+            label="Model"
+            placeholder={builtIn.model || 'model-name'}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
+            textContentType="none"
+            accessibilityLabel="AI model"
+          />
+
+          <TextField
+            value={key}
+            onChangeText={edit(setKey)}
+            label="API key"
+            placeholder={
+              builtIn.hasKey ? 'The app was built with one' : 'Paste the key from your provider'
+            }
             autoCapitalize="none"
             autoCorrect={false}
             spellCheck={false}
@@ -142,9 +194,9 @@ export default function SettingsScreen() {
           <View style={styles.actions}>
             <PillButton
               size="compact"
-              label={saving ? 'Saving…' : 'Save key'}
-              onPress={saveKey}
-              disabled={!changed || saving}
+              label={saving ? 'Saving…' : 'Save'}
+              onPress={save}
+              disabled={!changed || saving || Boolean(badEndpoint)}
             />
             <PillButton
               size="compact"
@@ -152,16 +204,30 @@ export default function SettingsScreen() {
               label={revealed ? 'Hide' : 'Show'}
               onPress={() => setRevealed((current) => !current)}
             />
-            {aiKey ? (
+            {isSet ? (
               <PillButton
                 size="compact"
                 tone="quiet"
                 label="Clear"
-                onPress={clearKey}
+                onPress={clear}
                 disabled={saving}
               />
             ) : null}
           </View>
+
+          {badEndpoint ? (
+            <ThemedText type="note" themeColor="error">
+              {badEndpoint}
+            </ThemedText>
+          ) : (
+            <ThemedText type="note" themeColor="textSecondary">
+              {setup.ready
+                ? `Will call ${setup.callUrl}`
+                : builtIn.baseUrl || builtIn.model
+                  ? 'Nothing to call yet — no endpoint or model is set.'
+                  : 'Nothing to call yet. This build shipped without one, so set both above — or rebuild with EXPO_PUBLIC_AI_BASE_URL and EXPO_PUBLIC_AI_MODEL.'}
+            </ThemedText>
+          )}
 
           {status === 'saved' ? (
             <ThemedText type="note" themeColor="textSecondary">
@@ -173,11 +239,6 @@ export default function SettingsScreen() {
               {error}
             </ThemedText>
           ) : null}
-
-          <ThemedText type="note" themeColor="textSecondary">
-            Kept on this device and sent only to the AI above. A key typed here replaces the
-            one the app was built with.
-          </ThemedText>
         </View>
       </Screen>
     </KeyboardAvoidingView>

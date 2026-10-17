@@ -42,30 +42,32 @@ export async function writeProfileName(name: string) {
 /** The stored settings, with the defaults filled in where nothing has been saved. */
 export async function readSettings(): Promise<Settings> {
   const rows = await selectSettings(await connect());
+  const text = (key: string, fallback: string) => rows[key] ?? fallback;
 
   return {
     // A stored value the app no longer understands falls back to the design's light.
     theme: rows[SETTING_KEYS.theme] === 'dark' ? 'dark' : DEFAULT_SETTINGS.theme,
-    aiKey: rows[SETTING_KEYS.aiKey] ?? DEFAULT_SETTINGS.aiKey,
+    aiBaseUrl: text(SETTING_KEYS.aiBaseUrl, DEFAULT_SETTINGS.aiBaseUrl),
+    aiModel: text(SETTING_KEYS.aiModel, DEFAULT_SETTINGS.aiModel),
+    aiKey: text(SETTING_KEYS.aiKey, DEFAULT_SETTINGS.aiKey),
   };
 }
 
 /**
- * Store the settings that changed. An emptied AI key is deleted rather than saved as an
- * empty string, so the store only ever holds values the app can use.
+ * Store the settings that changed. An emptied value is deleted rather than saved as an
+ * empty string, so the store only ever holds values the app can use — which is also what
+ * makes "empty means fall back to the build" true.
  */
 export async function writeSettings(settings: Partial<Settings>) {
   const db = await connect();
 
-  if (settings.theme) {
-    await upsertSetting(db, SETTING_KEYS.theme, settings.theme);
-  }
+  for (const [key, value] of Object.entries(settings) as [keyof Settings, string][]) {
+    const row = SETTING_KEYS[key];
 
-  if (settings.aiKey !== undefined) {
-    if (settings.aiKey) {
-      await upsertSetting(db, SETTING_KEYS.aiKey, settings.aiKey);
+    if (value) {
+      await upsertSetting(db, row, value);
     } else {
-      await deleteSetting(db, SETTING_KEYS.aiKey);
+      await deleteSetting(db, row);
     }
   }
 }

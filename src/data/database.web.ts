@@ -31,10 +31,14 @@ export async function writeProfileName(name: string): Promise<void> {
 /** The stored settings, with the defaults filled in where nothing has been saved. */
 export async function readSettings(): Promise<Settings> {
   const stored = read<Partial<Settings>>(SETTINGS_KEY);
+  const text = (key: 'aiBaseUrl' | 'aiModel' | 'aiKey') =>
+    typeof stored?.[key] === 'string' ? (stored[key] as string) : DEFAULT_SETTINGS[key];
 
   return {
     theme: stored?.theme === 'dark' ? 'dark' : DEFAULT_SETTINGS.theme,
-    aiKey: typeof stored?.aiKey === 'string' ? stored.aiKey : DEFAULT_SETTINGS.aiKey,
+    aiBaseUrl: text('aiBaseUrl'),
+    aiModel: text('aiModel'),
+    aiKey: text('aiKey'),
   };
 }
 

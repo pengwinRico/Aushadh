@@ -43,7 +43,7 @@ export default function AddMedicineScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { categories, addMedicine } = useCabinet();
-  const { aiKey } = useSettings();
+  const { aiBaseUrl, aiModel, aiKey } = useSettings();
   const [step, setStep] = useState<Step>('capture');
   const [typed, setTyped] = useState('');
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
@@ -79,8 +79,8 @@ export default function AddMedicineScreen() {
         photo: photo?.dataUrl,
         // The groups already on the shelf, so the model reuses one instead of inventing.
         groups: categories?.map((category) => category.name) ?? [],
-        // The key typed into Settings, when the user brought their own.
-        apiKey: aiKey,
+        // Where Settings points the app: an empty value falls back to the build's.
+        config: { baseUrl: aiBaseUrl, model: aiModel, apiKey: aiKey },
       });
 
       // A group the AI left empty is no answer; the store files those under `Other`, and
