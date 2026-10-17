@@ -4,7 +4,10 @@
  * The app's statements live in `src/data/sql.ts`, apart from `expo-sqlite`, so they can run
  * here over `node:sqlite` — which is how the schema, the migrations and the queries are
  * verified without a simulator or a phone. It covers the device path; the browser build
- * swaps `src/data/database.web.ts` in and is exercised in the app itself.
+ * swaps `src/data/database.web.ts` in and is exercised in the app itself. It also opens
+ * files an older build left behind, because a file can be current by version and stale by
+ * shape — the state that once answered `table medicine has no column named photo` — and
+ * those are repaired in place, with their rows, rather than trusted.
  *
  * TypeScript files are imported directly, which needs Node 24's built-in type stripping.
  *
@@ -16,6 +19,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { medicineCategories } from '../src/data/placeholders.ts';
 import {
   DATABASE_VERSION,
+  SCHEMA,
   categoryIdFor,
   configure,
   deleteMedicine,
@@ -317,6 +321,139 @@ await verify('migrating twice changes nothing', async () => {
   assert.equal((await selectCategories(upgraded)).length, 3);
 });
 
+/**
+ * A file from an install whose `medicine` table predates the `photo` column — the shape that
+ * was answered `table medicine has no column named photo`, with its rows already in it.
+ *
+ * It calls itself current, so every version guard skips it: the only thing that can put it
+ * right is the file being checked against the schema the code declares.
+ */
+async function staleFile(version) {
+  const db = driver();
+
+  await configure(db);
+  await db.execAsync(`
+    PRAGMA user_version = ${version};
+    CREATE TABLE profile (
+      id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+      name TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE category (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      tone TEXT NOT NULL,
+      position INTEGER NOT NULL
+    );
+    CREATE TABLE medicine (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      dose TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      category_id TEXT NOT NULL REFERENCES category (id) ON DELETE CASCADE,
+      position INTEGER NOT NULL
+    );
+    CREATE TABLE setting (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
+    CREATE INDEX medicine_by_category ON medicine (category_id, position);
+  `);
+  await db.runAsync(
+    'INSERT INTO category (id, name, tone, position) VALUES (?, ?, ?, ?)',
+    'fever-pain',
+    'Fever & Pain',
+    'warning',
+    0,
+  );
+  await db.runAsync(
+    `INSERT INTO medicine (id, name, dose, purpose, category_id, position)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    'paracetamol',
+    'Paracetamol',
+    '500 mg',
+    'Relieves mild pain and lowers fever.',
+    'fever-pain',
+    0,
+  );
+
+  return db;
+}
+
+const stranded = await staleFile(3);
+
+await verify('a file whose medicine table predates the photo column still opens', async () => {
+  await migrate(stranded, medicineCategories);
+});
+
+await verify('the column it was missing is added', () => {
+  const columns = stranded.db.prepare('PRAGMA table_info(medicine)').all().map((c) => c.name);
+
+  assert.ok(columns.includes('photo'), `medicine holds ${columns.join(', ')}`);
+});
+
+await verify('and the rows that were there are left where they were', async () => {
+  const [category] = await selectCategories(stranded);
+
+  assert.equal(category.medicines.length, 1);
+  assert.equal(category.medicines[0].name, 'Paracetamol');
+  assert.equal(category.medicines[0].photo, '');
+});
+
+await verify('so the insert that failed now lands, photo and all', async () => {
+  await insertMedicine(
+    stranded,
+    { id: 'med_crocin', name: 'Crocin', dose: '650 mg', purpose: 'Lowers fever.', photo: 'file:///p.jpg' },
+    'Fever & Pain',
+  );
+
+  const row = stranded.db.prepare('SELECT photo FROM medicine WHERE id = ?').get('med_crocin');
+
+  assert.equal(row.photo, 'file:///p.jpg');
+  assert.equal((await selectCategories(stranded))[0].medicines.length, 2);
+});
+
+await verify('the repair does not depend on the version the file claims', async () => {
+  const claiming = await staleFile(9);
+
+  await migrate(claiming, medicineCategories);
+
+  const columns = claiming.db.prepare('PRAGMA table_info(medicine)').all().map((c) => c.name);
+
+  assert.ok(columns.includes('photo'));
+  // Nor is a repaired cabinet re-seeded: a file that says it is newer than the code keeps
+  // the rows it has, and the samples do not come back for someone who deleted them.
+  assert.equal((await selectCategories(claiming)).length, 1);
+  assert.equal((await selectCategories(claiming))[0].medicines[0].name, 'Paracetamol');
+});
+
+/** Every table's columns, by name — the shape, without the order or the constraints. */
+function shape(driver) {
+  return Object.fromEntries(
+    SCHEMA.map((table) => [
+      table.name,
+      driver.db
+        .prepare(`PRAGMA table_info(${table.name})`)
+        .all()
+        .map((column) => column.name)
+        .sort(),
+    ]),
+  );
+}
+
+await verify('a repaired file, an upgraded one and a fresh install hold the same columns', () => {
+  assert.deepEqual(shape(stranded), shape(fresh));
+  assert.deepEqual(shape(upgraded), shape(fresh));
+});
+
+await verify('and that shape is the one the code declares', () => {
+  assert.deepEqual(
+    Object.fromEntries(
+      SCHEMA.map((table) => [table.name, table.columns.map((column) => column.name).sort()]),
+    ),
+    shape(fresh),
+  );
+});
 console.log(results.join('\n'));
 console.log(`\n${results.length - failures}/${results.length} checks passed`);
 

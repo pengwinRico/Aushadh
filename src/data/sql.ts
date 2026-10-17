@@ -22,10 +22,171 @@ export type SqlDatabase = {
 };
 
 /** Bump in the same change as a new `version < n` block. */
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 
 /** What a medicine is filed under when the AI does not name a group. */
 export const OTHER_CATEGORY = 'Other';
+
+/**
+ * The shape the code needs, as data rather than as SQL written out in each place.
+ *
+ * The version number in a file is a claim about its shape, not a fact about it: an install
+ * can be marked current and still be missing a column the statements name. That is what
+ * answered `table medicine has no column named photo` on a phone, with the migration
+ * returning early because the file said it was up to date and no statement able to repair
+ * it. Declaring the shape once lets `ensureSchema` read it and check the file against it on
+ * every open, and lets `scripts/check-sql.mjs` hold a fresh install against the same list,
+ * so the two cannot drift apart.
+ */
+type Column = {
+  name: string;
+  /** SQLite's type affinity — `TEXT`, `INTEGER`. */
+  type: string;
+  /** The column the row is keyed by. One per table. */
+  primary?: boolean;
+  notNull?: boolean;
+  /** A table-level rule, written as SQLite's `CHECK`. */
+  check?: string;
+  /** The table and clause a foreign key points at. */
+  references?: string;
+};
+
+type Table = {
+  name: string;
+  columns: Column[];
+  /** A covering index, when the screen's ordering reads one. */
+  index?: { name: string; columns: string[] };
+};
+
+export const SCHEMA: readonly Table[] = [
+  {
+    name: 'profile',
+    columns: [
+      // The profile is a single row, pinned to id 1.
+      { name: 'id', type: 'INTEGER', primary: true, notNull: true, check: 'id = 1' },
+      { name: 'name', type: 'TEXT', notNull: true },
+      { name: 'updated_at', type: 'INTEGER', notNull: true },
+    ],
+  },
+  {
+    name: 'category',
+    columns: [
+      { name: 'id', type: 'TEXT', primary: true, notNull: true },
+      { name: 'name', type: 'TEXT', notNull: true },
+      { name: 'tone', type: 'TEXT', notNull: true },
+      { name: 'position', type: 'INTEGER', notNull: true },
+    ],
+  },
+  {
+    name: 'medicine',
+    columns: [
+      { name: 'id', type: 'TEXT', primary: true, notNull: true },
+      { name: 'name', type: 'TEXT', notNull: true },
+      { name: 'dose', type: 'TEXT', notNull: true },
+      { name: 'purpose', type: 'TEXT', notNull: true },
+      // The pack photo on the device, empty when there is none.
+      { name: 'photo', type: 'TEXT' },
+      { name: 'category_id', type: 'TEXT', notNull: true, references: 'category (id) ON DELETE CASCADE' },
+      { name: 'position', type: 'INTEGER', notNull: true },
+    ],
+    index: { name: 'medicine_by_category', columns: ['category_id', 'position'] },
+  },
+  {
+    name: 'setting',
+    columns: [
+      { name: 'key', type: 'TEXT', primary: true, notNull: true },
+      { name: 'value', type: 'TEXT', notNull: true },
+    ],
+  },
+];
+
+/** One column as it is written in a `CREATE TABLE`. */
+function defineColumn(column: Column) {
+  return [
+    column.name,
+    column.type,
+    column.primary ? 'PRIMARY KEY' : '',
+    column.notNull ? 'NOT NULL' : '',
+    column.check ? `CHECK (${column.check})` : '',
+    column.references ? `REFERENCES ${column.references}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function tableOf(name: string) {
+  const table = SCHEMA.find((candidate) => candidate.name === name);
+
+  if (!table) throw new Error(`no table called ${name} in the schema`);
+
+  return table;
+}
+
+/** `CREATE TABLE IF NOT EXISTS`, so a half-built file is completed rather than fought over. */
+function createTable(name: string) {
+  const table = tableOf(name);
+
+  return `CREATE TABLE IF NOT EXISTS ${table.name} (\n  ${table.columns
+    .map(defineColumn)
+    .join(',\n  ')}\n)`;
+}
+
+function createIndex(name: string) {
+  const index = tableOf(name).index;
+
+  return index
+    ? `CREATE INDEX IF NOT EXISTS ${index.name} ON ${name} (${index.columns.join(', ')})`
+    : '';
+}
+
+/**
+ * A column added to a table that is already there, for `ensureSchema`.
+ *
+ * Only the type and the `NOT NULL` are carried over. SQLite refuses to add a column with
+ * `PRIMARY KEY`, and refuses a `REFERENCES` clause unless the default is null, so a repaired
+ * column takes neither — a file that lost its key or its foreign key along with a column is
+ * not one the app can use anyway, and filling the rows with an empty value keeps what is
+ * left of them.
+ */
+function defineAddedColumn(column: Column) {
+  const fill = column.type === 'INTEGER' ? '0' : "''";
+
+  return [column.name, column.type, column.notNull ? `NOT NULL DEFAULT ${fill}` : '']
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Hold the file against the declared schema, whatever version it claims to be.
+ *
+ * Reads `PRAGMA table_info` — four small queries, once per open — and adds anything the
+ * statements need and the file does not have, leaving rows exactly where they are. A table
+ * that is missing altogether is created; a column that is missing is appended, which is why
+ * its order differs from a fresh install's (every statement names its columns, so the order
+ * does not matter). A repaired cabinet is left empty rather than re-seeded: those rows were
+ * never there, and the samples must not come back for someone who deleted them.
+ */
+async function ensureSchema(db: SqlDatabase) {
+  for (const table of SCHEMA) {
+    await db.execAsync(createTable(table.name));
+
+    const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table.name})`);
+    const present = new Set(columns.map((column) => column.name));
+
+    for (const column of table.columns) {
+      if (present.has(column.name) || column.primary) continue;
+
+      await db.execAsync(
+        `ALTER TABLE ${table.name} ADD COLUMN ${defineAddedColumn(column)}`,
+      );
+      // Worth a line in the log: this is the file being repaired, and the shape it had.
+      console.log(`schema: ${table.name} was missing ${column.name}, added it`);
+    }
+
+    const index = createIndex(table.name);
+    if (index) await db.execAsync(index);
+  }
+}
 
 /** Connection settings, applied on every open — on a fresh file and on one that is
  * already current, which is why they are not part of a migration step. WAL keeps later
@@ -40,7 +201,8 @@ export async function configure(db: SqlDatabase) {
 /**
  * Bring the file up to `DATABASE_VERSION`. Each block is guarded by the version it
  * produces, so an install that already holds an older schema runs only what it is missing
- * and keeps its rows.
+ * and keeps its rows — and then `ensureSchema` holds the result against the shape the code
+ * uses, because a version number cannot be trusted to describe it.
  *
  * The sample cabinet is passed in rather than imported, which keeps this module free of
  * app modules and the seed swappable when a report can fill the cabinet itself.
@@ -49,80 +211,65 @@ export async function migrate(db: SqlDatabase, seed: MedicineCategory[]) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const version = row?.user_version ?? 0;
 
-  if (version >= DATABASE_VERSION) return;
+  if (version < DATABASE_VERSION) {
+    if (version < 1) {
+      await db.execAsync(createTable('profile'));
+    }
 
-  if (version < 1) {
-    // The profile is a single row, pinned to id 1.
-    await db.execAsync(`
-      CREATE TABLE profile (
-        id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
-        name TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-    `);
+    if (version < 2) {
+      // The cabinet: a medicine is a row of its own, so adding one never rewrites a list,
+      // and `position` keeps both the groups and the medicines inside them in the order
+      // the screen shows them.
+      await db.execAsync(createTable('category'));
+      await db.execAsync(createTable('medicine'));
+      await db.execAsync(createIndex('medicine'));
+
+      await seedCabinet(db, seed);
+    }
+
+    if (version < 3) {
+      // Settings are rows rather than columns, so one more costs no migration: the theme
+      // and the AI key are both just keys here.
+      await db.execAsync(createTable('setting'));
+    }
+
+    await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
   }
 
-  if (version < 2) {
-    // The cabinet. A medicine is a row of its own, so adding one never rewrites a list,
-    // and `position` keeps both the groups and the medicines inside them in the order
-    // the screen shows them. `photo` is the pack photo on the device, empty when there
-    // is none.
-    await db.execAsync(`
-      CREATE TABLE category (
-        id TEXT PRIMARY KEY NOT NULL,
-        name TEXT NOT NULL,
-        tone TEXT NOT NULL,
-        position INTEGER NOT NULL
-      );
-      CREATE TABLE medicine (
-        id TEXT PRIMARY KEY NOT NULL,
-        name TEXT NOT NULL,
-        dose TEXT NOT NULL,
-        purpose TEXT NOT NULL,
-        photo TEXT,
-        category_id TEXT NOT NULL REFERENCES category (id) ON DELETE CASCADE,
-        position INTEGER NOT NULL
-      );
-      CREATE INDEX medicine_by_category ON medicine (category_id, position);
-    `);
+  // Not something a version number can excuse: the file has to hold the columns the
+  // statements name, or the next insert fails with nothing able to repair it.
+  await ensureSchema(db);
+}
 
-    for (const [position, category] of seed.entries()) {
+/** The sample cabinet, onto a cabinet that is empty — a half-applied migration included. */
+async function seedCabinet(db: SqlDatabase, seed: MedicineCategory[]) {
+  const row = await db.getFirstAsync<{ rows: number }>('SELECT COUNT(*) AS rows FROM category');
+
+  if ((row?.rows ?? 0) > 0) return;
+
+  for (const [position, category] of seed.entries()) {
+    await db.runAsync(
+      'INSERT INTO category (id, name, tone, position) VALUES (?, ?, ?, ?)',
+      category.id,
+      category.name,
+      category.tone,
+      position,
+    );
+
+    for (const [index, medicine] of category.medicines.entries()) {
       await db.runAsync(
-        'INSERT INTO category (id, name, tone, position) VALUES (?, ?, ?, ?)',
+        `INSERT INTO medicine (id, name, dose, purpose, photo, category_id, position)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        medicine.id,
+        medicine.name,
+        medicine.dose,
+        medicine.purpose,
+        medicine.photo || null,
         category.id,
-        category.name,
-        category.tone,
-        position,
+        index,
       );
-
-      for (const [index, medicine] of category.medicines.entries()) {
-        await db.runAsync(
-          `INSERT INTO medicine (id, name, dose, purpose, photo, category_id, position)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          medicine.id,
-          medicine.name,
-          medicine.dose,
-          medicine.purpose,
-          medicine.photo || null,
-          category.id,
-          index,
-        );
-      }
     }
   }
-
-  if (version < 3) {
-    // Settings are rows rather than columns, so one more costs no migration: the theme
-    // and the AI key are both just keys here.
-    await db.execAsync(`
-      CREATE TABLE setting (
-        key TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL
-      );
-    `);
-  }
-
-  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 /** The stored profile, or `null` on a first run. */
