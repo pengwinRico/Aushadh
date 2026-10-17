@@ -44,7 +44,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "check:sql": "node scripts/check-sql.mjs"
+    "check:sql": "node scripts/check-sql.mjs",
+    "check:ai": "node scripts/check-ai.mjs"
   },
   "private": true
 }

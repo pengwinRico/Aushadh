@@ -42,12 +42,30 @@ a hosted provider receives them. Without a `.env`, the add-medicine form says so
 nothing. Take a photo on a device with `npx expo run:ios` or `npx expo run:android`, since
 the camera is a native module.
 
+### Google AI Studio (Gemma)
+
+Google's API speaks the same dialect, so a Gemma model works without a code change. Make a
+key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), then set:
+
+```bash
+EXPO_PUBLIC_AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+EXPO_PUBLIC_AI_MODEL=gemma-4-31b-it
+EXPO_PUBLIC_AI_API_KEY=your-key
+```
+
+Restart `npx expo start` after editing `.env` — Expo bakes these values into the bundle at
+start-up, so a server already running keeps the old ones. Run `npm run check:ai` to prove
+the key and the model name before picking up a pack. Gemma 4 reads images; if a model is not
+served on this endpoint, Google answers 404 — `gemini-3.8-flash` is on the same URL and
+reads packs too. The key ends up inside the app, so use one of your own.
+
 ## Checks
 
 ```bash
 npm run lint         # eslint
 npx tsc --noEmit     # types
 npm run check:sql    # the storage layer, over node:sqlite
+npm run check:ai     # one real call to the model in .env
 ```
 
 ## Get a fresh project
