@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-nat
 
 import { Seal } from '@/components/seal';
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing, type ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type SymbolName = ComponentProps<typeof SymbolView>['name'];
@@ -13,6 +13,19 @@ type SymbolName = ComponentProps<typeof SymbolView>['name'];
 const BUTTON_PADDING = 12;
 const SEAL_GAP = 14;
 
+type PillButtonTone = 'primary' | 'quiet' | 'danger';
+
+/**
+ * The three weights an action can carry. `primary` is the design's filled button; `quiet`
+ * is a secondary way out that reads as text on whatever it sits on; `danger` is the
+ * fill that says a press will take something away.
+ */
+const tones = {
+  primary: { label: 'onPrimary', container: 'primary' },
+  quiet: { label: 'textSecondary', container: null },
+  danger: { label: 'onErrorContainer', container: 'errorContainer' },
+} as const satisfies Record<PillButtonTone, { label: ThemeColor; container: ThemeColor | null }>;
+
 type PillButtonProps = {
   label: string;
   onPress?: () => void;
@@ -20,7 +33,9 @@ type PillButtonProps = {
   disabled?: boolean;
   /** `large` is a screen call to action; `compact` is the inline action inside a card. */
   size?: 'large' | 'compact';
-  /** Draws the mint seal with this glyph ahead of the label. */
+  /** `primary` fills; `quiet` and `danger` are the secondary and destructive weights. */
+  tone?: PillButtonTone;
+  /** Draws the mint seal with this glyph ahead of the label. Primary buttons only. */
   sealIcon?: SymbolName;
   style?: StyleProp<ViewStyle>;
 };
@@ -31,11 +46,13 @@ export function PillButton({
   onPress,
   disabled,
   size = 'large',
+  tone = 'primary',
   sealIcon,
   style,
 }: PillButtonProps) {
   const theme = useTheme();
   const large = size === 'large';
+  const weight = tones[tone];
 
   return (
     <Pressable
@@ -47,17 +64,17 @@ export function PillButton({
       style={({ pressed }) => [
         styles.base,
         large ? styles.large : styles.compact,
-        { backgroundColor: theme.primary },
+        { backgroundColor: weight.container ? theme[weight.container] : 'transparent' },
         disabled && styles.disabled,
         pressed && styles.pressed,
         style,
       ]}>
-      {sealIcon ? (
+      {sealIcon && tone === 'primary' ? (
         <Seal size={44} color={theme.primaryContainer}>
           <SymbolView name={sealIcon} size={20} tintColor={theme.onPrimaryContainer} />
         </Seal>
       ) : null}
-      <ThemedText type={large ? 'button' : 'buttonCompact'} themeColor="onPrimary">
+      <ThemedText type={large ? 'button' : 'buttonCompact'} themeColor={weight.label}>
         {label}
       </ThemedText>
     </Pressable>

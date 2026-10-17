@@ -6,8 +6,9 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { MedicineRow } from '@/components/medicine-row';
 import { Seal } from '@/components/seal';
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Spacing, type ThemeColor } from '@/constants/theme';
-import type { CategoryTone, MedicineCategory } from '@/data/placeholders';
+import { Radius, Spacing } from '@/constants/theme';
+import { categoryTones } from '@/constants/tones';
+import type { MedicineCategory } from '@/data/placeholders';
 import { useTheme } from '@/hooks/use-theme';
 
 type SymbolName = ComponentProps<typeof SymbolView>['name'];
@@ -17,33 +18,27 @@ const expandIcons: Record<'open' | 'closed', SymbolName> = {
   closed: { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' },
 };
 
-/** Colour per category group: the card fill, its ink and the count seal. */
-const categoryTones = {
-  warning: { container: 'warningContainer', onContainer: 'onWarningContainer', accent: 'warning' },
-  secondary: {
-    container: 'secondaryContainer',
-    onContainer: 'onSecondaryContainer',
-    accent: 'primary',
-  },
-  tertiary: {
-    container: 'tertiaryContainer',
-    onContainer: 'onTertiaryContainer',
-    accent: 'tertiary',
-  },
-} as const satisfies Record<
-  CategoryTone,
-  { container: ThemeColor; onContainer: ThemeColor; accent: ThemeColor }
->;
-
 /** The count seal's gap to the category name, and the header's extra inset. */
 const HEADER_GAP = 14;
 const HEADER_INSET = 6;
 
+type CategoryCardProps = {
+  category: MedicineCategory;
+  /** Open on first paint. The design shows the first group expanded. */
+  initiallyExpanded?: boolean;
+  /** Passed to each row's remove action. Absent, the card is read-only. */
+  onRemoveMedicine?: (medicineId: string) => void;
+};
+
 /** A group of medicines: a header with its count, and the medicines when open. */
-export function CategoryCard({ category }: { category: MedicineCategory }) {
+export function CategoryCard({
+  category,
+  initiallyExpanded = false,
+  onRemoveMedicine,
+}: CategoryCardProps) {
   const theme = useTheme();
   const tone = categoryTones[category.tone];
-  const [expanded, setExpanded] = useState(category.defaultExpanded);
+  const [expanded, setExpanded] = useState(initiallyExpanded);
 
   return (
     <View style={[styles.card, { backgroundColor: theme[tone.container] }]}>
@@ -70,7 +65,11 @@ export function CategoryCard({ category }: { category: MedicineCategory }) {
       {expanded ? (
         <View style={styles.medicines}>
           {category.medicines.map((medicine) => (
-            <MedicineRow key={medicine.id} medicine={medicine} />
+            <MedicineRow
+              key={medicine.id}
+              medicine={medicine}
+              onRemove={onRemoveMedicine}
+            />
           ))}
         </View>
       ) : null}

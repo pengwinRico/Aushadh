@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { Colors } from '@/constants/theme';
+import { CabinetProvider } from '@/context/cabinet';
 import { ProfileProvider, useProfile } from '@/context/profile';
 
 SplashScreen.preventAutoHideAsync();
@@ -22,7 +23,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={DefaultTheme}>
       <ProfileProvider>
-        <RootNavigator />
+        <CabinetProvider>
+          <RootNavigator />
+        </CabinetProvider>
       </ProfileProvider>
     </ThemeProvider>
   );
@@ -46,6 +49,7 @@ function RootNavigator() {
         }}>
         <Stack.Protected guard={profile !== null}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="add-medicine" options={{ presentation: 'modal' }} />
         </Stack.Protected>
 
         <Stack.Protected guard={profile === null}>

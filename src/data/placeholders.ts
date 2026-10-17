@@ -1,12 +1,17 @@
 /**
- * Placeholder content for the three tabs.
+ * Placeholder content for the three tabs: Reports and Advice still read from here.
  *
  * The values mirror the mocks in `design/` so the three screens read like the real
- * product. No parsing, storage or model calls happen yet — swap these modules for real
- * data sources when those land.
+ * product. A scanned report is not parsed yet, and the advice is not asked of a model yet
+ * — swap these modules for real data sources when those land.
  *
- * The first-run name is the exception: it is real, stored on the device by
- * `src/data/profile.ts`, and read through `useProfile()`.
+ * The domain types live here too: they outlive the samples they were written for.
+ *
+ * Three things are already real. The first-run name is stored on the device by
+ * `src/data/database.ts` and read through `useProfile()`. The medicine groups below are
+ * the seed for the cabinet's own tables, written on the first migration — the screen
+ * reads the store, not this module. And a medicine is read by the model in
+ * `src/data/ai.ts`, which names it, says what it is for and files it under a group.
  */
 
 export type LabStatus = 'low' | 'normal' | 'high';
@@ -31,6 +36,8 @@ export type Medicine = {
   dose: string;
   /** Plain-language description of what the medicine does. */
   purpose: string;
+  /** The pack photo kept on the device, empty when there is none. */
+  photo: string;
 };
 
 /** Which colour the category card uses. Maps to `Colors`, not to a raw hex value. */
@@ -40,8 +47,6 @@ export type MedicineCategory = {
   id: string;
   name: string;
   tone: CategoryTone;
-  /** Open on first paint — the design shows the first group expanded. */
-  defaultExpanded: boolean;
   medicines: Medicine[];
 };
 
@@ -84,24 +89,26 @@ export const labParameters: LabParameter[] = [
   },
 ];
 
+/** The cabinet on a first run, until a scanned report can fill the shelf. */
 export const medicineCategories: MedicineCategory[] = [
   {
-    id: 'fever-and-pain',
+    id: 'fever-pain',
     name: 'Fever & Pain',
     tone: 'warning',
-    defaultExpanded: true,
     medicines: [
       {
         id: 'paracetamol',
         name: 'Paracetamol',
         dose: '500 mg',
         purpose: 'Relieves mild pain and lowers fever.',
+        photo: '',
       },
       {
         id: 'ibuprofen',
         name: 'Ibuprofen',
         dose: '400 mg',
         purpose: 'Reduces pain, fever and inflammation.',
+        photo: '',
       },
     ],
   },
@@ -109,13 +116,13 @@ export const medicineCategories: MedicineCategory[] = [
     id: 'antibiotics',
     name: 'Antibiotics',
     tone: 'secondary',
-    defaultExpanded: false,
     medicines: [
       {
         id: 'amoxicillin',
         name: 'Amoxicillin',
         dose: '500 mg',
         purpose: 'Treats bacterial infections.',
+        photo: '',
       },
     ],
   },
@@ -123,21 +130,17 @@ export const medicineCategories: MedicineCategory[] = [
     id: 'blood-pressure',
     name: 'Blood Pressure',
     tone: 'tertiary',
-    defaultExpanded: false,
     medicines: [
       {
         id: 'amlodipine',
         name: 'Amlodipine',
         dose: '5 mg',
         purpose: 'Lowers blood pressure.',
+        photo: '',
       },
     ],
   },
 ];
-
-export const medicines: Medicine[] = medicineCategories.flatMap(
-  (category) => category.medicines,
-);
 
 export const healthSummary =
   'Hemoglobin is below range and has fallen since your last report. Glucose looks stable. LDL is high. Ask your doctor about iron and diet.';

@@ -1,12 +1,13 @@
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PillButton } from '@/components/pill-button';
 import { Seal } from '@/components/seal';
+import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
-import { MaxContentWidth, Radius, ScreenPadding, Spacing, Type } from '@/constants/theme';
+import { MaxContentWidth, ScreenPadding, Spacing } from '@/constants/theme';
 import { useProfile } from '@/context/profile';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -57,29 +58,23 @@ export default function WelcomeScreen() {
           </Seal>
           <ThemedText type="display">Aushadh</ThemedText>
           <ThemedText type="subtitle" themeColor="textSecondary" style={styles.tagline}>
-            Photos of your reports and medicine packs, kept as records you can track. Read on this
-            device, never in the cloud.
+            Photos of your reports and medicine packs, kept as records you can track, on your
+            own device.
           </ThemedText>
         </View>
 
         <View style={styles.form}>
           <ThemedText type="section">What should we call you?</ThemedText>
-          <TextInput
+          <TextField
             value={name}
             onChangeText={setName}
             onSubmitEditing={continueToApp}
             placeholder="First name"
-            placeholderTextColor={theme.textMuted}
             autoFocus
             autoCapitalize="words"
             autoComplete="given-name"
             returnKeyType="done"
             accessibilityLabel="Your first name"
-            style={[
-              Type.subtitle,
-              styles.field,
-              { backgroundColor: theme.surfaceElevated, color: theme.text },
-            ]}
           />
           <ThemedText type="note" themeColor="textSecondary">
             Stays on this device. No account, no cloud.
@@ -118,12 +113,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: Spacing.two,
-  },
-  field: {
-    height: 56,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: 0,
   },
   cta: {
     alignSelf: 'stretch',

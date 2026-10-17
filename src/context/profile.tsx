@@ -8,7 +8,7 @@ import {
   type PropsWithChildren,
 } from 'react';
 
-import { readProfile, writeProfileName } from '@/data/profile';
+import { readProfile, writeProfileName } from '@/data/database';
 import type { Profile } from '@/data/profile-types';
 
 type ProfileContextValue = {

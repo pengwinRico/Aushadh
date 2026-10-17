@@ -5,7 +5,8 @@ import { StyleSheet, View } from 'react-native';
 import { Sparkline } from '@/components/sparkline';
 import { StatusBadge } from '@/components/status-badge';
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Spacing, type ThemeColor } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
+import { statusTones } from '@/constants/tones';
 import type { LabParameter, LabStatus } from '@/data/placeholders';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -16,19 +17,6 @@ const statusLabels: Record<LabStatus, string> = {
   normal: 'Normal',
   high: 'High',
 };
-
-/**
- * The palette a result uses. The design keys the card fill, the badge and the trend
- * line off the result's status, so they can never drift apart.
- */
-const statusTones = {
-  low: { container: 'errorContainer', onContainer: 'onErrorContainer', accent: 'error' },
-  normal: { container: 'primaryContainer', onContainer: 'onPrimaryContainer', accent: 'primary' },
-  high: { container: 'warningContainer', onContainer: 'onWarningContainer', accent: 'warning' },
-} as const satisfies Record<
-  LabStatus,
-  { container: ThemeColor; onContainer: ThemeColor; accent: ThemeColor }
->;
 
 const warningIcon: SymbolName = {
   ios: 'exclamationmark',

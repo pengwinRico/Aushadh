@@ -25,6 +25,31 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Reading a medicine pack
+
+Adding a medicine photographs the pack — or takes a typed name — and hands it to an
+OpenAI-compatible model, which names the medicine, says what it is for and files it under a
+group. The answer is shown before it is saved, and nothing is written if the call fails.
+
+Copy `.env.example` to `.env` and point it at a model:
+
+```bash
+cp .env.example .env   # then set EXPO_PUBLIC_AI_BASE_URL and EXPO_PUBLIC_AI_MODEL
+```
+
+A model on the same machine (Ollama, LM Studio) keeps the photo and the name on the device;
+a hosted provider receives them. Without a `.env`, the add-medicine form says so and adds
+nothing. Take a photo on a device with `npx expo run:ios` or `npx expo run:android`, since
+the camera is a native module.
+
+## Checks
+
+```bash
+npm run lint         # eslint
+npx tsc --noEmit     # types
+npm run check:sql    # the storage layer, over node:sqlite
+```
+
 ## Get a fresh project
 
 When you're ready, run:
