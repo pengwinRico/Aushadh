@@ -4,25 +4,28 @@ import * as ImagePicker from 'expo-image-picker';
 import { keepPhotoFile, removePhotoFile } from '@/data/photo-file';
 
 /**
- * The pack photo: where it comes from and what is kept of it.
+ * The photo a record keeps: where it comes from, what is kept of it, and where it is filed.
  *
- * A pack is photographed (or chosen) at full size, shrunk to something a model can read
- * in one request, and kept with the record. The shrunk image is also the data URL that
- * goes to the AI — the original never does.
+ * A medicine pack and a lab report are photographed the same way — full size, shrunk to
+ * something a model can read in one request, kept beside the database. The shrunk image is
+ * also the data URL that goes to the AI; the original never does.
  */
 export type PickedPhoto = {
   /** What the form shows, and what is kept with the record. */
   preview: string;
-  /** A JPEG data URL, for the one call that reads the pack. */
+  /** A JPEG data URL, for the one call that reads it. */
   dataUrl: string;
 };
+
+/** The folder a photo is filed in: the app's own, one per kind of record. */
+export type PhotoFolder = 'medicines' | 'reports';
 
 /** The longest edge sent to the model: enough to read a label, small enough to send. */
 const MAX_EDGE = 1024;
 const QUALITY = 0.7;
 
-/** Photograph a pack, or choose a picture of one. `null` when the user backs out. */
-export async function pickMedicinePhoto(source: 'camera' | 'library'): Promise<PickedPhoto | null> {
+/** Photograph something, or choose a picture of it. `null` when the user backs out. */
+export async function pickPhoto(source: 'camera' | 'library'): Promise<PickedPhoto | null> {
   await askFor(source);
 
   const result =
@@ -62,13 +65,13 @@ export async function pickMedicinePhoto(source: 'camera' | 'library'): Promise<P
   return { preview: shrunk.uri, dataUrl: `data:image/jpeg;base64,${shrunk.base64}` };
 }
 
-/** Keep the photo with the medicine it belongs to. */
-export function keepMedicinePhoto(photo: PickedPhoto, id: string) {
-  return keepPhotoFile(photo, id);
+/** Keep the photo with the record it belongs to. */
+export function keepPhoto(photo: PickedPhoto, id: string, folder: PhotoFolder) {
+  return keepPhotoFile(photo, id, folder);
 }
 
 /** Take the photo with the record when the record goes. */
-export function forgetMedicinePhoto(uri: string) {
+export function forgetPhoto(uri: string) {
   removePhotoFile(uri);
 }
 

@@ -1,11 +1,14 @@
 /**
- * Reads one medicine from a photo, once — the half of the AI path `check:ai` cannot try,
- * because a pack photo is the reason the app calls a model at all.
+ * Reads one thing from a photo, once — the half of the AI path `check:ai` cannot try, because
+ * a photo is the reason the app calls a model at all.
  *
- *   node scripts/check-vision.mjs path/to/pack.jpg
+ *   node scripts/check-vision.mjs path/to/pack.jpg [pack|report]
  *
- * It runs `readMedicine` itself, so the request, the parsing and the error sentences are the
- * app's own. `.env` is read the way Expo reads it; the key itself is never printed.
+ * `pack` (the default) reads a medicine. `report` reads a printed lab report and prints every
+ * result on it, with the range it was measured against and the line on what it means. Both run
+ * the app's own `readMedicine` / `readReport`, so the request, the parsing and the error
+ * sentences are the app's own. `.env` is read the way Expo reads it; the key itself is never
+ * printed.
  *
  * TypeScript files are imported directly, which needs Node 24's built-in type stripping.
  */
@@ -13,12 +16,12 @@ import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { parseEnv } from 'node:util';
 
-import { readMedicine } from '../src/data/ai.ts';
+import { readMedicine, readReport } from '../src/data/ai.ts';
 
-const path = process.argv[2];
+const [path, mode = 'pack'] = process.argv.slice(2);
 
-if (!path) {
-  console.error('usage: node scripts/check-vision.mjs <photo.jpg>');
+if (!path || !['pack', 'report'].includes(mode)) {
+  console.error('usage: node scripts/check-vision.mjs <photo.jpg> [pack|report]');
   process.exit(2);
 }
 
@@ -37,11 +40,11 @@ if (!type) {
 }
 
 let source;
-let photo;
+let image;
 
 try {
   source = readFileSync('.env', 'utf8');
-  photo = readFileSync(path);
+  image = readFileSync(path);
 } catch (error) {
   console.error(`${error.message}\nCopy .env.example to .env and fill it in first.`);
   process.exit(1);
@@ -58,13 +61,15 @@ console.log(`model     ${process.env.EXPO_PUBLIC_AI_MODEL ?? '(unset)'}`);
 console.log(
   `key       ${process.env.EXPO_PUBLIC_AI_API_KEY ? 'set, not printed' : 'none — a local model needs no key'}`,
 );
-console.log(`photo     ${path} (${type}, ${Math.round(photo.length / 1024)}KB)\n`);
+console.log(`photo     ${path} (${type}, ${Math.round(image.length / 1024)}KB)`);
+console.log(`reading   a ${mode === 'report' ? 'lab report' : 'medicine pack'}\n`);
 
 const started = Date.now();
 const seconds = () => `${((Date.now() - started) / 1000).toFixed(1)}s`;
 
 try {
-  const reading = await readMedicine({ photo: `data:${type};base64,${photo.toString('base64')}` });
+  const photo = `data:${type};base64,${image.toString('base64')}`;
+  const reading = mode === 'report' ? await readReport({ photo }) : await readMedicine({ photo });
 
   console.log(`answered in ${seconds()}\n`);
   console.log(JSON.stringify(reading, null, 2));

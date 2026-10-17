@@ -1,15 +1,20 @@
 import * as SQLite from 'expo-sqlite';
 
 import { medicineCategories, type Medicine } from '@/data/placeholders';
+import type { Report } from '@/data/reports';
 import type { Settings } from '@/data/settings-types';
 import { DEFAULT_SETTINGS, SETTING_KEYS } from '@/data/settings-types';
 import {
   configure,
   deleteMedicine as deleteMedicineRow,
+  deleteReport as deleteReportRow,
   deleteSetting,
   insertMedicine,
+  insertReport,
   migrate,
   selectCategories,
+  selectLatestReport,
+  selectParameterHistory,
   selectProfile,
   selectSettings,
   upsertProfileName,
@@ -93,6 +98,29 @@ export async function deleteMedicine(medicineId: string) {
   return deleteMedicineRow(await connect(), medicineId);
 }
 
+/** The newest scanned report, or `null` when none has been scanned yet. */
+export async function listReport() {
+  return selectLatestReport(await connect());
+}
+
+/** Every reading stored, oldest first — the series a card's trend is drawn from. */
+export async function listParameterHistory() {
+  return selectParameterHistory(await connect());
+}
+
+/** Store a scanned report and everything read from it. */
+export async function saveReport(report: Report) {
+  await insertReport(await connect(), report);
+}
+
+/**
+ * Take a scanned report away, its results with it. Returns the photo the row pointed at,
+ * so the caller can clear the file.
+ */
+export async function deleteReport(reportId: string) {
+  return deleteReportRow(await connect(), reportId);
+}
+
 function connect() {
   connection ??= open();
 
@@ -104,7 +132,7 @@ async function open() {
 
   await configure(db);
 
-  // The sample cabinet stands in until a scanned report can fill the shelf itself.
+  // The cabinet a first run starts with, into its own tables.
   await migrate(db, medicineCategories);
 
   return db;

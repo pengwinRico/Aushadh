@@ -1,4 +1,8 @@
 import type { CategoryTone, Medicine, MedicineCategory } from '@/data/placeholders';
+// Relative on purpose: `scripts/check-*.mjs` load this module through Node, which knows
+// nothing of `tsconfig` paths — `@/data/reports` would resolve in the bundler and nowhere
+// else. Importing a sibling is the one style the app and the checks can both read.
+import { toStatus, type ParameterReading, type Report } from './reports.ts';
 
 /**
  * Every statement the app runs, and the schema they run against.
@@ -97,6 +101,40 @@ export const SCHEMA: readonly Table[] = [
       { name: 'key', type: 'TEXT', primary: true, notNull: true },
       { name: 'value', type: 'TEXT', notNull: true },
     ],
+  },
+  {
+    // One row per scanned report, so the parameters of the scan before it stay readable —
+    // which is what makes a trend a comparison between two reports rather than a decoration.
+    name: 'report',
+    columns: [
+      { name: 'id', type: 'TEXT', primary: true, notNull: true },
+      { name: 'taken_at', type: 'INTEGER', notNull: true },
+      // The photo of the paper, kept on the device, empty when there is none.
+      { name: 'photo', type: 'TEXT' },
+    ],
+  },
+  {
+    // A result on a report. The reading is stored as the report prints it — "11.2", "g/dL",
+    // "12.0–15.5" — and the reference range as text, because ranges are printed in words as
+    // often as numbers ("under 130").
+    name: 'parameter',
+    columns: [
+      { name: 'id', type: 'TEXT', primary: true, notNull: true },
+      {
+        name: 'report_id',
+        type: 'TEXT',
+        notNull: true,
+        references: 'report (id) ON DELETE CASCADE',
+      },
+      { name: 'name', type: 'TEXT', notNull: true },
+      { name: 'value', type: 'TEXT', notNull: true },
+      { name: 'unit', type: 'TEXT', notNull: true },
+      { name: 'reference_range', type: 'TEXT', notNull: true },
+      { name: 'status', type: 'TEXT', notNull: true },
+      { name: 'insight', type: 'TEXT', notNull: true },
+      { name: 'position', type: 'INTEGER', notNull: true },
+    ],
+    index: { name: 'parameter_by_report', columns: ['report_id', 'position'] },
   },
 ];
 
@@ -461,6 +499,117 @@ export async function deleteMedicine(db: SqlDatabase, medicineId: string) {
     row.category_id,
     row.category_id,
   );
+
+  return row.photo ?? '';
+}
+
+/** The columns of a stored result. The status arrives as text and is read into a tone. */
+type ParameterRow = {
+  name: string;
+  value: string;
+  unit: string;
+  reference_range: string;
+  status: string;
+  insight: string;
+};
+
+/**
+ * Store a scanned report and everything read from it.
+ *
+ * The parameters are written under ids derived from the report's, so a scan is stored whole
+ * and can be taken away whole — `parameter.report_id` cascades — and no second id has to be
+ * minted for a row nobody addresses by name.
+ */
+export async function insertReport(db: SqlDatabase, report: Report) {
+  await db.runAsync(
+    'INSERT INTO report (id, taken_at, photo) VALUES (?, ?, ?)',
+    report.id,
+    report.takenAt,
+    report.photo || null,
+  );
+
+  for (const [position, parameter] of report.parameters.entries()) {
+    await db.runAsync(
+      `INSERT INTO parameter
+         (id, report_id, name, value, unit, reference_range, status, insight, position)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `${report.id}_${position}`,
+      report.id,
+      parameter.name,
+      parameter.value,
+      parameter.unit,
+      parameter.referenceRange,
+      parameter.status,
+      parameter.insight,
+      position,
+    );
+  }
+}
+
+/**
+ * The newest report, with its results in the order they were read — what the Reports tab
+ * shows. `taken_at` is the sort, with `rowid` behind it, so two scans a millisecond apart
+ * still have a newest one.
+ */
+export async function selectLatestReport(db: SqlDatabase): Promise<Report | null> {
+  const latest = await db.getFirstAsync<{ id: string; taken_at: number; photo: string | null }>(
+    'SELECT id, taken_at, photo FROM report ORDER BY taken_at DESC, rowid DESC LIMIT 1',
+  );
+
+  if (!latest) return null;
+
+  const rows = await db.getAllAsync<ParameterRow>(
+    'SELECT name, value, unit, reference_range, status, insight FROM parameter WHERE report_id = ? ORDER BY position',
+    latest.id,
+  );
+
+  return {
+    id: latest.id,
+    takenAt: latest.taken_at,
+    photo: latest.photo ?? '',
+    parameters: rows.map((row) => ({
+      name: row.name,
+      value: row.value,
+      unit: row.unit,
+      referenceRange: row.reference_range,
+      // A word the app cannot draw is read as in range rather than thrown away.
+      status: toStatus(row.status),
+      insight: row.insight,
+    })),
+  };
+}
+
+/**
+ * Every stored reading, oldest report first — the series a card's trend is drawn from.
+ *
+ * It reads across all the reports rather than the newest one because that is the whole
+ * point of keeping them: "↓ 0.8 since last" is a comparison, and a comparison needs the
+ * report before it.
+ */
+export async function selectParameterHistory(db: SqlDatabase): Promise<ParameterReading[]> {
+  const rows = await db.getAllAsync<{ name: string; value: string; taken_at: number }>(`
+    SELECT p.name, p.value, r.taken_at
+    FROM parameter p
+    JOIN report r ON r.id = p.report_id
+    ORDER BY r.taken_at, r.rowid, p.position
+  `);
+
+  return rows.map((row) => ({ name: row.name, value: row.value, takenAt: row.taken_at }));
+}
+
+/**
+ * Take a scanned report away, the results with it. Returns the photo to delete, or `null`
+ * when there was no such report, so the caller can clear the file the row pointed at.
+ */
+export async function deleteReport(db: SqlDatabase, reportId: string) {
+  const row = await db.getFirstAsync<{ photo: string | null }>(
+    'SELECT photo FROM report WHERE id = ?',
+    reportId,
+  );
+
+  if (!row) return null;
+
+  await db.runAsync('DELETE FROM report WHERE id = ?', reportId);
 
   return row.photo ?? '';
 }

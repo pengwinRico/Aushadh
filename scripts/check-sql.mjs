@@ -23,11 +23,15 @@ import {
   categoryIdFor,
   configure,
   deleteMedicine,
+  deleteReport,
   deleteSetting,
   insertMedicine,
+  insertReport,
   migrate,
   nextCategoryTone,
   selectCategories,
+  selectLatestReport,
+  selectParameterHistory,
   selectProfile,
   selectSettings,
   upsertProfileName,
@@ -454,6 +458,125 @@ await verify('and that shape is the one the code declares', () => {
     shape(fresh),
   );
 });
+
+/**
+ * The reports store: a scan written whole, the history the cards' trends are drawn from, and
+ * a scan taken back with everything it held.
+ */
+const scanned = driver();
+await configure(scanned);
+await migrate(scanned, medicineCategories);
+
+const FIRST_SCAN = {
+  id: 'report_1',
+  takenAt: 1_700_000_000_000,
+  photo: '/documents/reports/report_1.jpg',
+  parameters: [
+    {
+      name: 'Hemoglobin',
+      value: '11.2',
+      unit: 'g/dL',
+      referenceRange: '12.0–15.5',
+      status: 'low',
+      insight: 'Carries oxygen from your lungs to the rest of your body.',
+    },
+    {
+      name: 'Fasting glucose',
+      value: '92',
+      unit: 'mg/dL',
+      referenceRange: '70–99',
+      status: 'normal',
+      insight: 'The sugar in your blood after a night without food.',
+    },
+    {
+      name: 'LDL cholesterol',
+      value: '214',
+      unit: 'mg/dL',
+      referenceRange: 'under 130',
+      status: 'high',
+      insight: 'Carries cholesterol into the walls of your arteries.',
+    },
+  ],
+};
+
+const SECOND_SCAN = {
+  id: 'report_2',
+  takenAt: 1_700_086_400_000,
+  photo: '',
+  parameters: [
+    {
+      name: 'Hemoglobin',
+      value: '12.4',
+      unit: 'g/dL',
+      referenceRange: '12.0–15.5',
+      status: 'normal',
+      insight: 'Carries oxygen from your lungs to the rest of your body.',
+    },
+  ],
+};
+
+await verify('a first run has no report and no history', async () => {
+  assert.equal(await selectLatestReport(scanned), null);
+  assert.deepEqual(await selectParameterHistory(scanned), []);
+});
+
+await verify('a scanned report is stored whole, in the order it was read', async () => {
+  await insertReport(scanned, FIRST_SCAN);
+
+  assert.deepEqual(await selectLatestReport(scanned), FIRST_SCAN);
+});
+
+await verify('and its readings become the history a trend is drawn from', async () => {
+  const history = await selectParameterHistory(scanned);
+
+  assert.deepEqual(
+    history.map((reading) => reading.name),
+    ['Hemoglobin', 'Fasting glucose', 'LDL cholesterol'],
+  );
+  assert.deepEqual(
+    history.map((reading) => reading.value),
+    ['11.2', '92', '214'],
+  );
+  assert.deepEqual(
+    history.map((reading) => reading.takenAt),
+    [FIRST_SCAN.takenAt, FIRST_SCAN.takenAt, FIRST_SCAN.takenAt],
+  );
+});
+
+await verify('a second scan is the newest one, and the first is still there', async () => {
+  await insertReport(scanned, SECOND_SCAN);
+
+  assert.deepEqual(await selectLatestReport(scanned), SECOND_SCAN);
+  assert.deepEqual(
+    (await selectParameterHistory(scanned)).map((reading) => reading.value),
+    ['11.2', '92', '214', '12.4'],
+  );
+});
+
+await verify('two scans in the same millisecond still have a newest one', async () => {
+  await insertReport(scanned, { ...SECOND_SCAN, id: 'report_3' });
+
+  assert.equal((await selectLatestReport(scanned)).id, 'report_3');
+});
+
+await verify('taking a report away takes every result it held with it', async () => {
+  const photo = await deleteReport(scanned, 'report_2');
+
+  assert.equal(photo, '');
+  assert.equal(
+    scanned.db.prepare('SELECT COUNT(*) AS rows FROM parameter WHERE report_id = ?').get('report_2')
+      .rows,
+    0,
+  );
+  assert.equal((await selectLatestReport(scanned)).id, 'report_3');
+  // The scans before it are untouched: removing one is not clearing the tab.
+  assert.equal((await selectParameterHistory(scanned)).length, 4);
+});
+
+await verify('taking away a report that is not there changes nothing', async () => {
+  assert.equal(await deleteReport(scanned, 'report_nowhere'), null);
+});
+
 console.log(results.join('\n'));
 console.log(`\n${results.length - failures}/${results.length} checks passed`);
 

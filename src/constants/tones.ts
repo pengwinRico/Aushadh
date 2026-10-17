@@ -1,5 +1,6 @@
 import type { ThemeColor } from '@/constants/theme';
-import type { CategoryTone, LabStatus } from '@/data/placeholders';
+import type { CategoryTone } from '@/data/placeholders';
+import type { LabStatus } from '@/data/reports';
 
 /**
  * The palette a result status or a medicine category draws in.

@@ -46,6 +46,7 @@
     "lint": "expo lint",
     "check:sql": "node scripts/check-sql.mjs",
     "check:parse": "node scripts/check-parse.mjs",
+    "check:report": "node scripts/check-report.mjs",
     "check:ai": "node scripts/check-ai.mjs"
   },
   "private": true

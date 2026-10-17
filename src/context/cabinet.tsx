@@ -10,11 +10,7 @@ import {
 
 import { deleteMedicine, listCategories, saveMedicine } from '@/data/database';
 import { newRecordId } from '@/data/ids';
-import {
-  forgetMedicinePhoto,
-  keepMedicinePhoto,
-  type PickedPhoto,
-} from '@/data/medicine-photo';
+import { forgetPhoto, keepPhoto, type PickedPhoto } from '@/data/photo';
 import type { MedicineCategory } from '@/data/placeholders';
 
 /**
@@ -91,7 +87,7 @@ export function CabinetProvider({ children }: PropsWithChildren) {
       const id = newRecordId('med');
       // The photo is kept under the record's own id, so the file and the row are named
       // together and the picture outlives the cache it was read from.
-      const kept = photo ? await keepMedicinePhoto(photo, id) : '';
+      const kept = photo ? await keepPhoto(photo, id, 'medicines') : '';
 
       await saveMedicine(
         { id, name: name.trim(), dose: dose.trim(), purpose: purpose.trim(), photo: kept },
@@ -108,7 +104,7 @@ export function CabinetProvider({ children }: PropsWithChildren) {
       // stay on the device with nothing left to reach it.
       const photo = await deleteMedicine(medicineId);
 
-      if (photo) forgetMedicinePhoto(photo);
+      if (photo) forgetPhoto(photo);
 
       await refresh();
     },

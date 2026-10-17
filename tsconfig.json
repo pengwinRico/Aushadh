@@ -2,6 +2,13 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "noEmit": true,
+    /**
+     * `scripts/check-*.mjs` load `src/data/*.ts` through Node, which resolves a relative
+     * import by its exact name — so a sibling is named `./reports.ts` there — and this is
+     * what lets `tsc` accept it. Nothing is emitted; Metro does the bundling.
+     */
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": [
         "./src/*"

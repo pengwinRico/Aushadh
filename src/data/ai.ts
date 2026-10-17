@@ -1,16 +1,25 @@
 /**
- * The one call the app makes to a model: read a medicine pack — from a photo, or from the
- * name typed in — and answer with the medicine's name, dose, use and the group it belongs
- * to. The user never files a medicine themselves; the model names the group, and
- * `insertMedicine` creates it.
+ * The calls the app makes to a model — two of them, and both are readings of a photo or a
+ * few words into the app's own records.
+ *
+ * `readMedicine` reads a pack, from a photo or from the name typed in, and answers with the
+ * medicine's name, dose, use and the group it belongs to; the user never files a medicine
+ * themselves. `readReport` reads a printed laboratory report and answers with every result
+ * on it, each with its range, where it sits against that range, and one sentence on what it
+ * means for the body.
  *
  * The endpoint is OpenAI-compatible, so the same code talks to a model on this machine
  * (Ollama, LM Studio) or to a hosted one. Every part of the address — the base URL, the
  * model and the key — comes from `.env` (see `.env.example`) unless the user typed one
  * into Settings, which wins. That is what lets a build with no endpoint at all be pointed
  * at one without a rebuild. A call that fails throws with a message the form can show;
- * nothing is written to the cabinet.
+ * nothing is written to the store.
  */
+// Relative on purpose: `scripts/check-parse.mjs` loads this module through Node, which
+// knows nothing of `tsconfig` paths — the sibling import is the one the app and the check
+// can both read.
+import { toStatus, type ReportParameter } from './reports.ts';
+
 export type MedicineReading = {
   name: string;
   dose: string;
@@ -42,6 +51,14 @@ export type ReadMedicineInput = {
   config?: AiConfig;
 };
 
+/** What a report read is asked for: the photo, and nothing else. */
+export type ReadReportInput = {
+  /** The report photo as a JPEG data URL. */
+  photo: string;
+  /** The address, the model and the key, as Settings holds them. */
+  config?: AiConfig;
+};
+
 /** A local model can take a while to think; a request that never lands is worse. */
 const TIMEOUT_MS = 60_000;
 
@@ -52,6 +69,42 @@ export async function readMedicine({
   groups = [],
   config,
 }: ReadMedicineInput): Promise<MedicineReading> {
+  const answer = await ask({
+    brief: instructions(groups),
+    question: question({ name: name.trim(), photo }),
+    config,
+  });
+
+  return parseReading(answer);
+}
+
+/** Read a printed lab report: one request, one JSON answer, one entry per result. */
+export async function readReport({ photo, config }: ReadReportInput): Promise<ReportParameter[]> {
+  const answer = await ask({
+    brief: REPORT_BRIEF,
+    question: reportQuestion(photo),
+    config,
+  });
+
+  return parseReport(answer);
+}
+
+/**
+ * One request to the model, and the answer's text — the part both readings share.
+ *
+ * A failing call is a sentence the form can show, never a half-written record: the address
+ * a request would use, the abort, the status code and a payload in a shape the app cannot
+ * read all end up as errors here, and `parseReading`/`parseReport` refuse the rest.
+ */
+async function ask({
+  brief,
+  question,
+  config,
+}: {
+  brief: string;
+  question: unknown;
+  config?: AiConfig;
+}) {
   const { url, model, apiKey } = endpoint(config);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -68,8 +121,8 @@ export async function readMedicine({
         model,
         temperature: 0,
         messages: [
-          { role: 'system', content: instructions(groups) },
-          { role: 'user', content: question({ name: name.trim(), photo }) },
+          { role: 'system', content: brief },
+          { role: 'user', content: question },
         ],
       }),
       signal: controller.signal,
@@ -85,7 +138,7 @@ export async function readMedicine({
   }
 
   if (!response.ok) {
-    throw new Error(`The AI endpoint answered ${response.status}. Nothing was added.`);
+    throw new Error(`The AI endpoint answered ${response.status}. Nothing was saved.`);
   }
 
   const payload = (await response.json()) as {
@@ -94,10 +147,10 @@ export async function readMedicine({
   const answer = payload.choices?.[0]?.message?.content;
 
   if (typeof answer !== 'string') {
-    throw new Error('The AI answered in a form the app could not read. Nothing was added.');
+    throw new Error('The AI answered in a form the app could not read. Nothing was saved.');
   }
 
-  return parseReading(answer);
+  return answer;
 }
 
 /**
@@ -215,6 +268,34 @@ function question({ name, photo }: { name: string; photo?: string }) {
 }
 
 /**
+ * The model's brief for a report: every result on the paper, each with the range it was
+ * printed against, where it sits in that range, and one sentence on what it measures — the
+ * insight is the point, because a number on its own says nothing about the body.
+ */
+const REPORT_BRIEF = [
+  'You read printed laboratory reports into a personal health record. Answer with JSON only:',
+  '{"parameters": [{"name": "...", "value": "...", "unit": "...", "referenceRange": "...", "status": "normal", "insight": "..."}]}',
+  '',
+  'name: the test as printed, such as "Hemoglobin" or "LDL cholesterol".',
+  'value: the measured number as printed, without the unit.',
+  'unit: the unit as printed, such as "g/dL" or "mg/dL". Empty when none is printed.',
+  'referenceRange: the range as printed, such as "12.0–15.5" or "under 130". Empty when none is printed.',
+  'status: "low", "normal" or "high" — where the value sits against that range.',
+  'insight: one short sentence in everyday words saying what this measures and how it connects to the body.',
+  'List every result on the report, in the order it is printed.',
+  'No diagnosis, no advice, no warnings.',
+  'If there is no laboratory report here, answer {"parameters": []}.',
+].join('\n');
+
+/** The report photo, which is the whole question. */
+function reportQuestion(photo: string) {
+  return [
+    { type: 'text', text: 'Read every result on this lab report.' },
+    { type: 'image_url', image_url: { url: photo } },
+  ];
+}
+
+/**
  * Every well-formed `{...}` in the answer, in the order they appear, braces inside strings
  * left alone. A model that thinks out loud before answering — Gemma brackets its reasoning in
  * `<thought>`, prose and all — can put braces of its own ahead of the reading.
@@ -294,5 +375,63 @@ export function parseReading(answer: string): MedicineReading {
     purpose: field('purpose'),
     // An empty group is no answer; the store files those under `OTHER_CATEGORY`.
     category: field('category'),
+  };
+}
+
+/**
+ * Read the model's answer to a report. Same tolerance as a medicine reading — prose, a code
+ * fence and a `<thought>` block are all skipped — but the answer is a *list*, so the last
+ * object that carries one is the reading, and entries that name nothing are dropped rather
+ * than refused: one unreadable row on the paper should not cost the other eleven.
+ */
+export function parseReport(answer: string): ReportParameter[] {
+  const lists = objects(answer)
+    .map((candidate) => {
+      try {
+        const parsed: unknown = JSON.parse(candidate);
+
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>).parameters
+          : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter((list): list is unknown[] => Array.isArray(list));
+
+  const parameters = (lists.at(-1) ?? [])
+    .map(parameterFrom)
+    .filter((parameter): parameter is ReportParameter => parameter !== null);
+
+  if (!parameters.length) {
+    throw new Error('The AI did not find any results on this report. Try a clearer photo.');
+  }
+
+  return parameters;
+}
+
+/** One entry of that list, or `null` when it names no test at all. */
+function parameterFrom(entry: unknown): ReportParameter | null {
+  if (!entry || typeof entry !== 'object') return null;
+
+  const fields = entry as Record<string, unknown>;
+  const text = (key: string) => {
+    const value = fields[key];
+
+    return typeof value === 'string' ? value.trim() : '';
+  };
+  const name = text('name');
+
+  if (!name) return null;
+
+  return {
+    name,
+    value: text('value'),
+    unit: text('unit'),
+    // `referenceRange` is what the brief asks for; `range` is the other word models reach
+    // for, and there is no reading to lose by accepting it.
+    referenceRange: text('referenceRange') || text('range'),
+    status: toStatus(fields.status),
+    insight: text('insight') || text('note'),
   };
 }

@@ -1,6 +1,7 @@
 import { categoryIdFor, nextCategoryTone, OTHER_CATEGORY } from '@/data/sql';
 import { medicineCategories, type Medicine, type MedicineCategory } from '@/data/placeholders';
 import type { Profile } from '@/data/profile-types';
+import type { ParameterReading, Report } from '@/data/reports';
 import type { Settings } from '@/data/settings-types';
 import { DEFAULT_SETTINGS } from '@/data/settings-types';
 
@@ -15,6 +16,7 @@ import { DEFAULT_SETTINGS } from '@/data/settings-types';
 const PROFILE_KEY = 'aushadh.profile';
 const CABINET_KEY = 'aushadh.cabinet';
 const SETTINGS_KEY = 'aushadh.settings';
+const REPORTS_KEY = 'aushadh.reports';
 
 /** The stored profile, or `null` on a first run. */
 export async function readProfile(): Promise<Profile | null> {
@@ -116,6 +118,57 @@ export async function deleteMedicine(medicineId: string): Promise<string | null>
   );
 
   return photo;
+}
+
+/**
+ * The newest scanned report, or `null` when none has been scanned yet. Scans are appended,
+ * so the newest is the last one written — the same order the device keeps with `taken_at`.
+ */
+export async function listReport(): Promise<Report | null> {
+  const stored = reports();
+
+  return stored.length ? stored[stored.length - 1] : null;
+}
+
+/** Every reading stored, oldest first — the series a card's trend is drawn from. */
+export async function listParameterHistory(): Promise<ParameterReading[]> {
+  return reports().flatMap((report) =>
+    report.parameters.map((parameter) => ({
+      name: parameter.name,
+      value: parameter.value,
+      takenAt: report.takenAt,
+    })),
+  );
+}
+
+/** Store a scanned report and everything read from it. */
+export async function saveReport(report: Report): Promise<void> {
+  write(REPORTS_KEY, [...reports(), report]);
+}
+
+/**
+ * Take a scanned report away, its results with it. Returns the photo the row pointed at,
+ * or `null` when there was no such report.
+ */
+export async function deleteReport(reportId: string): Promise<string | null> {
+  const stored = reports();
+  const report = stored.find((candidate) => candidate.id === reportId);
+
+  if (!report) return null;
+
+  write(
+    REPORTS_KEY,
+    stored.filter((candidate) => candidate.id !== reportId),
+  );
+
+  return report.photo;
+}
+
+/** The reports scanned so far, oldest first. */
+function reports(): Report[] {
+  const stored = read<Report[]>(REPORTS_KEY);
+
+  return Array.isArray(stored) ? stored : [];
 }
 
 /** The sample groups, as the device seeds them in its first migration. */

@@ -13,7 +13,7 @@ import { Radius, ScreenPadding, Spacing } from '@/constants/theme';
 import { useCabinet } from '@/context/cabinet';
 import { useSettings } from '@/context/settings';
 import { readMedicine, type MedicineReading } from '@/data/ai';
-import { pickMedicinePhoto, type PickedPhoto } from '@/data/medicine-photo';
+import { pickPhoto, type PickedPhoto } from '@/data/photo';
 import { OTHER_CATEGORY } from '@/data/sql';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -58,7 +58,7 @@ export default function AddMedicineScreen() {
     setError(null);
 
     try {
-      const picked = await pickMedicinePhoto(source);
+      const picked = await pickPhoto(source);
 
       // A cancelled picker leaves whatever was there before.
       if (picked) setPhoto(picked);

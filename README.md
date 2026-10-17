@@ -1,13 +1,14 @@
 # Aushadh
 
 An Expo app that keeps your reports and medicine cabinet in one place: photograph a
-medicine pack or type its name, let the AI name it and file it, and read your results
-with advice that follows them.
+medicine pack or type its name, let the AI name it and file it, scan a printed lab report
+and let the AI read every result off it, and read your results with advice that follows
+them.
 
 Everything a user records stays in the app's own store on the device — SQLite on iOS and
 Android, `localStorage` in the browser build. The only thing that leaves the phone is the
-pack photo or name handed to the AI endpoint you configure, and that happens once, when a
-medicine is added.
+photo (or the typed name) handed to the AI endpoint you configure, and that happens once,
+when a medicine is added or a report is scanned.
 
 Built from the design in `design/*.png` with Expo Router, React Native and TypeScript.
 
@@ -29,13 +30,33 @@ screen; after that the app opens on the tabs.
 
 Three tabs, each with its own heading and a gear for Settings.
 
-- **Reports** — a scan action and the measured parameters, each with its status, value,
-  trend line and reference range. The screen is drawn; reading a real report is not built
-  yet (`TODO(scan-report)`), so the parameters come from `src/data/placeholders.ts`.
+- **Reports** — a scan action and the results of the last report scanned: each one with its
+  status, value, range, a line on what it measures, and a trend line drawn from the reports
+  before it. It starts empty and fills from the store, not from constants.
 - **Cabinet** — the medicines you keep, grouped by category, each group with its own tint
   and a count. Groups fold open and shut.
 - **Advice** — a summary card and a question box over a placeholder thread. Generating the
   summary and answering a question are not built yet (`TODO(summary)`, `TODO(ask-advice)`).
+
+### Scanning a report
+
+The Reports tab's scan action opens a two-step sheet:
+
+1. **Capture** — photograph the printed report, or choose a picture of it. A report is only
+   ever a photo; there is nothing to type.
+2. **Review** — every result the AI read arrives as an editable row: the test's name, its
+   value, unit, the range the report printed, the status (tap the badge to cycle Low /
+   Normal / High) and the line on what the result means. Nothing is written until you save,
+   and if the call fails the form says why and adds nothing.
+
+Every scan is kept, which is what makes the trends real: a card's `↓ 0.8 since last` is this
+reading against the same test on the previous report, and the line beside it is that test's
+own history — six readings at most, with a single measurement drawn as one dot and no claim
+made when either of the last two is not a number ("Negative", "<0.5"). A scan can be taken
+back with the two-tap Delete under the cards; the reports before it stay.
+
+The sentence behind the "!" on each card is the AI's, stored with the result: what the test
+measures and how it connects to the body.
 
 ### Adding a medicine
 
@@ -75,7 +96,7 @@ device:
 
 ## The AI
 
-The cabinet speaks to any OpenAI-compatible `/chat/completions` endpoint — a model on this
+The app speaks to any OpenAI-compatible `/chat/completions` endpoint — a model on this
 machine (Ollama, LM Studio) or a hosted provider. Copy `.env.example` to `.env` and set it:
 
 ```bash
@@ -105,28 +126,32 @@ EXPO_PUBLIC_AI_API_KEY=your-key
 
 Gemma 4 reads images, and it thinks before it answers: the reasoning arrives in front of the
 JSON, in a `<thought>` block that can hold braces of its own, so the app reads the last object
-in the answer that names a medicine rather than the first `{` to the last `}`.
+in the answer that is a reading rather than the first `{` to the last `}` — the last one that
+names a medicine for a pack, the last one carrying a list of results for a report.
 
-Measured against this endpoint on a pack photo: `gemma-4-26b-a4b-it` answers in three to nine
-seconds. `gemma-4-31b-it` is the stronger model and took 45s, with 503s under load — close to
-the 60s the app waits before giving up. `gemini-flash-lite-latest` is on the same URL and
-answers in about a second if speed matters more than running a Gemma.
+Measured against this endpoint: `gemma-4-26b-a4b-it` answers a pack photo in three to nine
+seconds, and a full page of results in about twenty-seven. `gemma-4-31b-it` is the stronger
+model and took 45s, with 503s under load — close to the 60s the app waits before giving up.
+`gemini-flash-lite-latest` is on the same URL and answers in about a second if speed matters
+more than running a Gemma.
 
 Google retires model names for new keys: `gemini-2.5-flash` now answers 404 and names
 `gemini-3.8-flash` as its replacement. A model that is not served says so, rather than
 failing silently.
 
-`npm run check:ai` proves a key, an endpoint and a model name with one real call, and
-`npm run check:vision` does the same with a pack photo, both before you pick up a phone.
+`npm run check:ai` proves a key, an endpoint and a model name with one real call,
+`npm run check:vision path/to/pack.jpg` does the same with a medicine pack, and
+`npm run check:vision path/to/report.jpg report` with a lab report — all three before you
+pick up a phone.
 
 ## Where things live
 
 ```
-src/app/          routes — welcome, (tabs)/{index,cabinet,advice}, add-medicine, settings
+src/app/          routes — welcome, (tabs)/{index,cabinet,advice}, add-medicine, scan-report, settings
 src/components/   the design system: cards, rows, buttons, fields, the tab bar
 src/constants/    tokens — colour (light and dark), spacing, radius, type — and tones
-src/context/      settings, profile and cabinet state for the whole app
-src/data/         the model call, the photo pipeline, the store and its SQL
+src/context/      settings, profile, cabinet and reports state for the whole app
+src/data/         the model calls, the photo pipeline, the store, its SQL and the report maths
 scripts/          the checks a device would otherwise have to prove
 design/           the product design the screens are measured against
 ```
@@ -134,7 +159,9 @@ design/           the product design the screens are measured against
 The store is one module per platform with the same API — `src/data/database.ts` for
 SQLite, `src/data/database.web.ts` for the browser preview — over statements that live in
 `src/data/sql.ts`. That file imports no native code, which is how the schema and the
-queries are exercised against a real engine in CI-free Node, without a device.
+queries are exercised against a real engine in CI-free Node, without a device. The report
+arithmetic lives apart from all of it in `src/data/reports.ts`, which is pure, so the trend a
+card draws can be checked without a store, a model or a phone.
 
 ## Checks
 
@@ -143,8 +170,10 @@ npm run lint         # eslint
 npx tsc --noEmit     # types
 npm run check:sql    # the schema and every statement, over node:sqlite
 npm run check:parse  # the model's answers, against the shapes real models return
+npm run check:report # the trend maths behind a Reports card
 npm run check:ai     # one real call to the model in .env
-npm run check:vision path/to/pack.jpg   # one real call with a pack photo
+npm run check:vision path/to/pack.jpg          # one real call with a pack photo
+npm run check:vision path/to/report.jpg report # one real call with a lab report
 ```
 
 `check:ai` and `check:vision` make the same requests the form makes, print the reading, and

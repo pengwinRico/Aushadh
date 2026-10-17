@@ -7,6 +7,7 @@ import { useMemo } from 'react';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { CabinetProvider } from '@/context/cabinet';
 import { ProfileProvider, useProfile } from '@/context/profile';
+import { ReportsProvider } from '@/context/reports';
 import { SettingsProvider, useSettings } from '@/context/settings';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -54,7 +55,9 @@ function Navigation() {
     <ThemeProvider value={navigationTheme}>
       <ProfileProvider>
         <CabinetProvider>
-          <RootNavigator />
+          <ReportsProvider>
+            <RootNavigator />
+          </ReportsProvider>
         </CabinetProvider>
       </ProfileProvider>
     </ThemeProvider>
@@ -84,6 +87,7 @@ function RootNavigator() {
         <Stack.Protected guard={profile !== null}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="add-medicine" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="scan-report" options={{ presentation: 'modal' }} />
           <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
         </Stack.Protected>
 

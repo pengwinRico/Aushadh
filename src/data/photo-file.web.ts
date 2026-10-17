@@ -1,7 +1,7 @@
-import type { PickedPhoto } from '@/data/medicine-photo';
+import type { PickedPhoto } from '@/data/photo';
 
 /**
- * The browser keeps a pack photo as the data URL it was read as.
+ * The browser keeps a photo as the data URL it was read as.
  *
  * A resized image comes back from the manipulator as a blob URL, and a blob URL dies with
  * the page — so the record holds the base64 itself, which is what survives a reload.
@@ -9,8 +9,11 @@ import type { PickedPhoto } from '@/data/medicine-photo';
  * the photo is a file (`photo-file.ts`), and the file is what the record points at.
  */
 
-/** The image travels inside the record. */
-export async function keepPhotoFile(photo: PickedPhoto) {
+/** The image travels inside the record, so there is no folder and no file to name. */
+export async function keepPhotoFile(photo: PickedPhoto, id: string, folder: string) {
+  void id;
+  void folder;
+
   return photo.dataUrl;
 }
 
