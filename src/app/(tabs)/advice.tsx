@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ChatBubble } from '@/components/chat-bubble';
@@ -9,10 +9,24 @@ import { ScreenHeader } from '@/components/screen-header';
 import { SummaryCard } from '@/components/summary-card';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useProfile } from '@/context/profile';
 import { adviceMessages, healthSummary } from '@/data/placeholders';
 
 export default function AdviceScreen() {
+  const { profile } = useProfile();
   const [question, setQuestion] = useState('');
+
+  // The thread is placeholder copy until the model writes its own; the assistant opens
+  // on the name captured at first run.
+  const messages = useMemo(
+    () =>
+      adviceMessages.map((message) =>
+        message.role === 'assistant' && profile
+          ? { ...message, text: `Hi ${profile.name}. ${message.text}` }
+          : message,
+      ),
+    [profile],
+  );
 
   return (
     <Screen>
@@ -31,7 +45,7 @@ export default function AdviceScreen() {
         />
       </SummaryCard>
       <View style={styles.thread}>
-        {adviceMessages.map((message) => (
+        {messages.map((message) => (
           <ChatBubble key={message.id} message={message} />
         ))}
       </View>

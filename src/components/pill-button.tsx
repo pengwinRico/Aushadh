@@ -16,6 +16,8 @@ const SEAL_GAP = 14;
 type PillButtonProps = {
   label: string;
   onPress?: () => void;
+  /** Fades the button and blocks the action — used while the first-run name is empty. */
+  disabled?: boolean;
   /** `large` is a screen call to action; `compact` is the inline action inside a card. */
   size?: 'large' | 'compact';
   /** Draws the mint seal with this glyph ahead of the label. */
@@ -24,7 +26,14 @@ type PillButtonProps = {
 };
 
 /** The filled primary action from the design: "Scan a lab report", "Add medicine", … */
-export function PillButton({ label, onPress, size = 'large', sealIcon, style }: PillButtonProps) {
+export function PillButton({
+  label,
+  onPress,
+  disabled,
+  size = 'large',
+  sealIcon,
+  style,
+}: PillButtonProps) {
   const theme = useTheme();
   const large = size === 'large';
 
@@ -32,11 +41,14 @@ export function PillButton({ label, onPress, size = 'large', sealIcon, style }: 
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled === true }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
         large ? styles.large : styles.compact,
         { backgroundColor: theme.primary },
+        disabled && styles.disabled,
         pressed && styles.pressed,
         style,
       ]}>
@@ -69,5 +81,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  disabled: {
+    opacity: 0.4,
   },
 });

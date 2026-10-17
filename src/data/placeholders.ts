@@ -5,9 +5,8 @@
  * product. No parsing, storage or model calls happen yet — swap these modules for real
  * data sources when those land.
  *
- * TODO(name-on-first-run): `user` is the seam for the first-run name step. Once that
- * screen exists, replace the literal with the captured value (there is no storage
- * layer to read from yet).
+ * The first-run name is the exception: it is real, stored on the device by
+ * `src/data/profile.ts`, and read through `useProfile()`.
  */
 
 export type LabStatus = 'low' | 'normal' | 'high';
@@ -51,10 +50,6 @@ export type ChatMessage = {
   role: 'user' | 'assistant';
   text: string;
 };
-
-export const user = {
-  name: 'Aarav',
-} as const;
 
 export const labParameters: LabParameter[] = [
   {

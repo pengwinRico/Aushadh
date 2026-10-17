@@ -13,6 +13,10 @@ const DURATION = 600;
  * Branded launch overlay: it covers the app while the native splash hides, then fades
  * out. The artwork is still the Expo placeholder mark — swap
  * `assets/images/expo-logo.png` for the aushadh icon once one exists.
+ *
+ * The root layout keeps the native splash up until the stored profile is known, so this
+ * mounts with the app ready: its first layout is what hands the splash over to the
+ * overlay.
  */
 export function AnimatedSplashOverlay() {
   const [animate, setAnimate] = useState(false);
