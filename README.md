@@ -1,50 +1,93 @@
-# Welcome to your Expo app 👋
+# Aushadh
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+An Expo app that keeps your reports and medicine cabinet in one place: photograph a
+medicine pack or type its name, let the AI name it and file it, and read your results
+with advice that follows them.
 
-## Get started
+Everything a user records stays in the app's own store on the device — SQLite on iOS and
+Android, `localStorage` in the browser build. The only thing that leaves the phone is the
+pack photo or name handed to the AI endpoint you configure, and that happens once, when a
+medicine is added.
 
-1. Install dependencies
+Built from the design in `design/*.png` with Expo Router, React Native and TypeScript.
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Reading a medicine pack
-
-Adding a medicine photographs the pack — or takes a typed name — and hands it to an
-OpenAI-compatible model, which names the medicine, says what it is for and files it under a
-group. The answer is shown before it is saved, and nothing is written if the call fails.
-
-Copy `.env.example` to `.env` and point it at a model:
+## Getting started
 
 ```bash
-cp .env.example .env   # then set EXPO_PUBLIC_AI_BASE_URL and EXPO_PUBLIC_AI_MODEL
+npm install
+npx expo start
 ```
 
-A model on the same machine (Ollama, LM Studio) keeps the photo and the name on the device;
-a hosted provider receives them. Without a `.env`, the add-medicine form says so and adds
-nothing. Take a photo on a device with `npx expo run:ios` or `npx expo run:android`, since
-the camera is a native module.
+Then press `i` for the iOS simulator, `a` for the Android emulator, or `w` for the browser.
+The camera and the on-device database are native modules, so a real device needs
+`npx expo run:ios` / `npx expo run:android` rather than Expo Go.
+
+First run asks for a name. Until one is stored, the welcome screen is the only reachable
+screen; after that the app opens on the tabs.
+
+## The app
+
+Three tabs, each with its own heading and a gear for Settings.
+
+- **Reports** — a scan action and the measured parameters, each with its status, value,
+  trend line and reference range. The screen is drawn; reading a real report is not built
+  yet (`TODO(scan-report)`), so the parameters come from `src/data/placeholders.ts`.
+- **Cabinet** — the medicines you keep, grouped by category, each group with its own tint
+  and a count. Groups fold open and shut.
+- **Advice** — a summary card and a question box over a placeholder thread. Generating the
+  summary and answering a question are not built yet (`TODO(summary)`, `TODO(ask-advice)`).
+
+### Adding a medicine
+
+The cabinet's add action opens a two-step sheet:
+
+1. **Capture** — photograph the pack, or type the name. Either one is enough.
+2. **Review** — the AI's reading arrives as *name, dose, what it is for,* and *category*,
+   all editable. Nothing is written until you save it, and if the call fails the form says
+   why and adds nothing.
+
+The AI decides the category; the app files the medicine under the name it returns —
+reusing the existing group when it recognises one, opening a new one with the next tint
+when it does not. A group disappears once its last medicine goes.
+
+Photos are kept with the medicine as a record and shown on its row. They are shrunk to
+1024px before they are stored: a file under the app's documents directory on device, a
+data URL in the browser preview.
+
+### Removing
+
+The trash action on a medicine row takes two taps — Remove, then Keep to change your mind —
+because it deletes the photo and can take the whole group with it.
+
+## Settings
+
+The gear beside every tab's title opens Settings. Both choices are stored on the device:
+
+- **Appearance** — Light or Dark. The light palette is sampled from `design/`; the dark one
+  is built from the same tokens, so every screen, card, the tab bar, the navigation chrome
+  and the status bar follow the switch, and it survives a relaunch.
+- **AI key** — a key of your own. It is kept beside the profile in the app's database, sent
+  only to the endpoint named under the field, and replaces the key the app was built with.
+  *Clear* falls back to that one.
+
+## The AI
+
+The cabinet speaks to any OpenAI-compatible `/chat/completions` endpoint — a model on this
+machine (Ollama, LM Studio) or a hosted provider. Copy `.env.example` to `.env` and set it:
+
+```bash
+EXPO_PUBLIC_AI_BASE_URL=http://localhost:11434/v1
+EXPO_PUBLIC_AI_MODEL=llava
+# EXPO_PUBLIC_AI_API_KEY=          # only for endpoints that ask for one
+```
+
+Expo bakes `EXPO_PUBLIC_*` into the bundle at start-up, so restart `npx expo start` after
+editing `.env`, and treat a key set here as public — anyone with the app has it. Leave it
+out and let each user paste their own in Settings instead.
 
 ### Google AI Studio (Gemma)
 
-Google's API speaks the same dialect, so a Gemma model works without a code change. Make a
+Google's API speaks the same dialect, so a Gemma model works with no code change. Make a
 key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), then set:
 
 ```bash
@@ -53,59 +96,35 @@ EXPO_PUBLIC_AI_MODEL=gemma-4-31b-it
 EXPO_PUBLIC_AI_API_KEY=your-key
 ```
 
-Restart `npx expo start` after editing `.env` — Expo bakes these values into the bundle at
-start-up, so a server already running keeps the old ones. Run `npm run check:ai` to prove
-the key and the model name before picking up a pack. Gemma 4 reads images; if a model is not
-served on this endpoint, Google answers 404 — `gemini-3.8-flash` is on the same URL and
-reads packs too. The key ends up inside the app, so use one of your own — or leave
-`EXPO_PUBLIC_AI_API_KEY` out and let each user paste theirs in Settings.
+Gemma 4 reads images. If a model is not served on this endpoint, Google answers 404 —
+`gemini-3.8-flash` is on the same URL and reads packs too. `npm run check:ai` proves a key
+and a model name with one real call before you pick up a pack.
 
-## Settings
+## Where things live
 
-The gear beside every tab's title opens Settings. Both choices are stored on the device:
+```
+src/app/          routes — welcome, (tabs)/{index,cabinet,advice}, add-medicine, settings
+src/components/   the design system: cards, rows, buttons, fields, the tab bar
+src/constants/    tokens — colour (light and dark), spacing, radius, type — and tones
+src/context/      settings, profile and cabinet state for the whole app
+src/data/         the model call, the photo pipeline, the store and its SQL
+scripts/          check-sql.mjs, check-ai.mjs — the two things a device would otherwise prove
+design/           the product design the screens are measured against
+```
 
-- **Appearance** switches between the light palette sampled from `design/` and a dark one
-  built from the same tokens. It applies at once — screens, cards, the tab bar, the
-  status bar — and survives a relaunch.
-- **AI key** keeps a key of your own. It is stored beside the profile in the app's
-  database, sent only to the endpoint named under it, and replaces the key the app was
-  built with; Clear goes back to that one.
+The store is one module per platform with the same API — `src/data/database.ts` for
+SQLite, `src/data/database.web.ts` for the browser preview — over statements that live in
+`src/data/sql.ts`. That file imports no native code, which is how the schema and the
+queries are exercised against a real engine in CI-free Node, without a device.
 
 ## Checks
 
 ```bash
 npm run lint         # eslint
 npx tsc --noEmit     # types
-npm run check:sql    # the storage layer, over node:sqlite
+npm run check:sql    # the schema and every statement, over node:sqlite
 npm run check:ai     # one real call to the model in .env
 ```
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+`npm run check:ai` makes the same request the form makes, prints the reading, and never
+prints the key. Without a `.env` it says so.
