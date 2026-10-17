@@ -2,6 +2,7 @@ import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing, Type } from '@/constants/theme';
+import { useSettings } from '@/context/settings';
 import { useTheme } from '@/hooks/use-theme';
 
 type TextFieldProps = TextInputProps & {
@@ -17,6 +18,7 @@ type TextFieldProps = TextInputProps & {
  */
 export function TextField({ label, block, style, ...rest }: TextFieldProps) {
   const theme = useTheme();
+  const { theme: themeName } = useSettings();
 
   return (
     <View style={styles.field}>
@@ -29,6 +31,7 @@ export function TextField({ label, block, style, ...rest }: TextFieldProps) {
         multiline={block}
         textAlignVertical={block ? 'top' : 'center'}
         placeholderTextColor={theme.textMuted}
+        keyboardAppearance={themeName === 'dark' ? 'dark' : 'light'}
         style={[
           Type.subtitle,
           block ? styles.block : styles.pill,

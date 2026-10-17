@@ -17,7 +17,7 @@ type StatusBadgeProps = {
 export function StatusBadge({ label, color }: StatusBadgeProps) {
   return (
     <View style={[styles.badge, { backgroundColor: color }]}>
-      <ThemedText type="badge" themeColor="onPrimary">
+      <ThemedText type="badge" themeColor="onAccent">
         {label}
       </ThemedText>
     </View>

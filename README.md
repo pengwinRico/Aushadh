@@ -57,7 +57,19 @@ Restart `npx expo start` after editing `.env` — Expo bakes these values into t
 start-up, so a server already running keeps the old ones. Run `npm run check:ai` to prove
 the key and the model name before picking up a pack. Gemma 4 reads images; if a model is not
 served on this endpoint, Google answers 404 — `gemini-3.8-flash` is on the same URL and
-reads packs too. The key ends up inside the app, so use one of your own.
+reads packs too. The key ends up inside the app, so use one of your own — or leave
+`EXPO_PUBLIC_AI_API_KEY` out and let each user paste theirs in Settings.
+
+## Settings
+
+The gear beside every tab's title opens Settings. Both choices are stored on the device:
+
+- **Appearance** switches between the light palette sampled from `design/` and a dark one
+  built from the same tokens. It applies at once — screens, cards, the tab bar, the
+  status bar — and survives a relaunch.
+- **AI key** keeps a key of your own. It is stored beside the profile in the app's
+  database, sent only to the endpoint named under it, and replaces the key the app was
+  built with; Clear goes back to that one.
 
 ## Checks
 

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Seal } from '@/components/seal';
 import { Radius, Spacing, Type } from '@/constants/theme';
+import { useSettings } from '@/context/settings';
 import { useTheme } from '@/hooks/use-theme';
 
 type SymbolName = ComponentProps<typeof SymbolView>['name'];
@@ -22,6 +23,7 @@ type QuestionInputProps = {
  */
 export function QuestionInput({ value, onChangeText, onSend }: QuestionInputProps) {
   const theme = useTheme();
+  const { theme: themeName } = useSettings();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.surfaceElevated }]}>
@@ -31,6 +33,7 @@ export function QuestionInput({ value, onChangeText, onSend }: QuestionInputProp
         onSubmitEditing={onSend}
         placeholder="Ask a question"
         placeholderTextColor={theme.textMuted}
+        keyboardAppearance={themeName === 'dark' ? 'dark' : 'light'}
         returnKeyType="send"
         accessibilityLabel="Ask a question"
         style={[Type.subtitle, styles.input, { color: theme.text }]}

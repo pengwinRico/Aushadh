@@ -5,9 +5,10 @@
  * `insertMedicine` creates it.
  *
  * The endpoint is OpenAI-compatible, so the same code talks to a model on this machine
- * (Ollama, LM Studio) or to a hosted one. It is configured with `.env` — see `.env.example`
- * — and nothing about it is stored. A call that fails throws with a message the form can
- * show; nothing is written to the cabinet.
+ * (Ollama, LM Studio) or to a hosted one. The address and the model come from `.env` —
+ * see `.env.example` — and the key comes from there too, unless one was typed into
+ * Settings, which wins. A call that fails throws with a message the form can show;
+ * nothing is written to the cabinet.
  */
 export type MedicineReading = {
   name: string;
@@ -25,6 +26,8 @@ export type ReadMedicineInput = {
   photo?: string;
   /** The groups already on the shelf, so the model reuses them instead of inventing one. */
   groups?: string[];
+  /** The key typed into Settings; empty falls back to the one the app was built with. */
+  apiKey?: string;
 };
 
 /** A local model can take a while to think; a request that never lands is worse. */
@@ -35,8 +38,9 @@ export async function readMedicine({
   name = '',
   photo,
   groups = [],
+  apiKey: typedKey,
 }: ReadMedicineInput): Promise<MedicineReading> {
-  const { url, model, apiKey } = endpoint();
+  const { url, model, apiKey } = endpoint(typedKey);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let response: Response;
@@ -84,17 +88,41 @@ export async function readMedicine({
   return parseReading(answer);
 }
 
-/** The endpoint from `.env`, checked here so a missing setting reads as a sentence. */
-function endpoint() {
+/**
+ * Where the model lives, from `.env`. The Settings screen shows the same pair, and the
+ * form's error names the settings a build is missing.
+ */
+function configured() {
   const url = process.env.EXPO_PUBLIC_AI_BASE_URL?.replace(/\/+$/, '');
   const model = process.env.EXPO_PUBLIC_AI_MODEL;
-  const apiKey = process.env.EXPO_PUBLIC_AI_API_KEY;
 
-  if (!url || !model) {
-    throw new Error('No AI is set up yet. Add EXPO_PUBLIC_AI_BASE_URL and EXPO_PUBLIC_AI_MODEL to your .env file.');
+  return url && model ? { url, model } : null;
+}
+
+/**
+ * The endpoint a call uses: the address and the model from the build, and the key typed
+ * into Settings when there is one — a key the user brought with them beats the one the
+ * app was built with.
+ */
+function endpoint(typedKey?: string) {
+  const setup = configured();
+
+  if (!setup) {
+    throw new Error(
+      'No AI is set up yet. This build has no EXPO_PUBLIC_AI_BASE_URL and EXPO_PUBLIC_AI_MODEL.',
+    );
   }
 
-  return { url, model, apiKey };
+  return { ...setup, apiKey: typedKey?.trim() || process.env.EXPO_PUBLIC_AI_API_KEY };
+}
+
+/** The host and model a Settings screen can name, or `null` when the build has neither. */
+export function aiSetup() {
+  const setup = configured();
+
+  return setup
+    ? { host: setup.url.replace(/^https?:\/\//, ''), model: setup.model }
+    : null;
 }
 
 /**

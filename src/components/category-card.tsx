@@ -48,7 +48,7 @@ export function CategoryCard({
         onPress={() => setExpanded((current) => !current)}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}>
         <Seal size={44} color={theme[tone.accent]}>
-          <ThemedText type="seal" themeColor="onPrimary">
+          <ThemedText type="seal" themeColor="onAccent">
             {category.medicines.length}
           </ThemedText>
         </Seal>

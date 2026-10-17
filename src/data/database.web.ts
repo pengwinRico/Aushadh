@@ -1,6 +1,8 @@
 import { categoryIdFor, nextCategoryTone, OTHER_CATEGORY } from '@/data/sql';
 import { medicineCategories, type Medicine, type MedicineCategory } from '@/data/placeholders';
 import type { Profile } from '@/data/profile-types';
+import type { Settings } from '@/data/settings-types';
+import { DEFAULT_SETTINGS } from '@/data/settings-types';
 
 /**
  * Browser stand-in for the on-device database.
@@ -12,6 +14,7 @@ import type { Profile } from '@/data/profile-types';
  */
 const PROFILE_KEY = 'aushadh.profile';
 const CABINET_KEY = 'aushadh.cabinet';
+const SETTINGS_KEY = 'aushadh.settings';
 
 /** The stored profile, or `null` on a first run. */
 export async function readProfile(): Promise<Profile | null> {
@@ -23,6 +26,21 @@ export async function readProfile(): Promise<Profile | null> {
 /** Store the first name, replacing any earlier one. */
 export async function writeProfileName(name: string): Promise<void> {
   write(PROFILE_KEY, { name });
+}
+
+/** The stored settings, with the defaults filled in where nothing has been saved. */
+export async function readSettings(): Promise<Settings> {
+  const stored = read<Partial<Settings>>(SETTINGS_KEY);
+
+  return {
+    theme: stored?.theme === 'dark' ? 'dark' : DEFAULT_SETTINGS.theme,
+    aiKey: typeof stored?.aiKey === 'string' ? stored.aiKey : DEFAULT_SETTINGS.aiKey,
+  };
+}
+
+/** Store the settings that changed; the browser has no row to delete, so empty is stored. */
+export async function writeSettings(settings: Partial<Settings>): Promise<void> {
+  write(SETTINGS_KEY, { ...(await readSettings()), ...settings });
 }
 
 /** The cabinet: every category in order, each with the medicines it holds. */

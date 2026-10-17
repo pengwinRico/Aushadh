@@ -1,10 +1,14 @@
 /**
  * Design tokens — the single source of truth for colour, radius, spacing and type.
  *
- * The values are sampled from the product design in `design/*.png` (canvas #F4FBF9,
- * primary #006A62, mint accent #9EF2E7, ink #161D1C, tab bar surface #E3EAE8, …).
- * The design defines a light surface only, so both scheme entries resolve to the same
- * palette and the app pins `userInterfaceStyle: "light"` in **app.json**.
+ * The light values are sampled from the product design in `design/*.png` (canvas
+ * #F4FBF9, primary #006A62, mint accent #9EF2E7, ink #161D1C, tab bar surface #E3EAE8,
+ * …). The design only draws a light surface, so the dark values are a derivation of it:
+ * the same roles, tonally inverted, with the mint kept as the accent and the amber and
+ * rose groups carried into their dark containers.
+ *
+ * Both schemes name the same roles, which is what lets a screen switch with the setting
+ * in `useSettings()` and never branch on the scheme itself.
  *
  * Screens and components import tokens — never raw hex values, sizes or radii.
  */
@@ -13,7 +17,9 @@ import '@/global.css';
 
 import { Platform, type TextStyle } from 'react-native';
 
-const palette = {
+export type ThemeName = 'light' | 'dark';
+
+const light = {
   /** Screen canvas. */
   background: '#F4FBF9',
   /** Grouping surface: the tab bar, chat bubbles. */
@@ -29,6 +35,8 @@ const palette = {
   /** Primary action: filled buttons, selected states. */
   primary: '#006A62',
   onPrimary: '#FFFFFF',
+  /** Text and glyphs on a solid accent fill — badges and count seals. */
+  onAccent: '#FFFFFF',
   /** Mint accent: the active tab indicator, highlight cards, seals. */
   primaryContainer: '#9EF2E7',
   onPrimaryContainer: '#00201D',
@@ -51,9 +59,38 @@ const palette = {
   row: '#FFF7E9',
 } as const;
 
-export const Colors = { light: palette, dark: palette } as const;
+export type ThemeColor = keyof typeof light;
 
-export type ThemeColor = keyof typeof palette;
+/** The same roles on a dark canvas. Accents lighten so badges and seals keep their fill. */
+const dark: Record<ThemeColor, string> = {
+  background: '#0C1312',
+  surface: '#18211F',
+  surfaceElevated: '#202B29',
+  text: '#E4EBE8',
+  textSecondary: '#B3C2BE',
+  textMuted: '#8C9B97',
+  primary: '#7FE3D5',
+  onPrimary: '#00201D',
+  onAccent: '#00201D',
+  primaryContainer: '#123B35',
+  onPrimaryContainer: '#A9F0E6',
+  error: '#FFB4AB',
+  errorContainer: '#4A1512',
+  onErrorContainer: '#FFDAD6',
+  warning: '#FFD18C',
+  warningContainer: '#3A2A0C',
+  onWarningContainer: '#FFE6C2',
+  secondaryContainer: '#12332F',
+  onSecondaryContainer: '#C7EDE7',
+  tertiary: '#FFB1C1',
+  tertiaryContainer: '#3F1A24',
+  onTertiaryContainer: '#FFD9E2',
+  row: '#0E1A18',
+};
+
+export const Colors = { light, dark } satisfies Record<ThemeName, Record<ThemeColor, string>>;
+
+export type Palette = (typeof Colors)[ThemeName];
 
 export const Fonts = Platform.select({
   ios: {

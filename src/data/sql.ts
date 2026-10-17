@@ -22,7 +22,7 @@ export type SqlDatabase = {
 };
 
 /** Bump in the same change as a new `version < n` block. */
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 /** What a medicine is filed under when the AI does not name a group. */
 export const OTHER_CATEGORY = 'Other';
@@ -111,6 +111,17 @@ export async function migrate(db: SqlDatabase, seed: MedicineCategory[]) {
     }
   }
 
+  if (version < 3) {
+    // Settings are rows rather than columns, so one more costs no migration: the theme
+    // and the AI key are both just keys here.
+    await db.execAsync(`
+      CREATE TABLE setting (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );
+    `);
+  }
+
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
@@ -129,6 +140,35 @@ export async function upsertProfileName(db: SqlDatabase, name: string) {
     name,
     Date.now(),
   );
+}
+
+/** Every stored setting, by key — the theme, the AI key, and whatever comes next. */
+export async function selectSettings(db: SqlDatabase) {
+  const rows = await db.getAllAsync<{ key: string; value: string }>(
+    'SELECT key, value FROM setting',
+  );
+  const settings: Record<string, string> = {};
+
+  for (const row of rows) {
+    settings[row.key] = row.value;
+  }
+
+  return settings;
+}
+
+/** Store one setting, replacing an earlier value. */
+export async function upsertSetting(db: SqlDatabase, key: string, value: string) {
+  await db.runAsync(
+    `INSERT INTO setting (key, value) VALUES (?, ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+    key,
+    value,
+  );
+}
+
+/** Forget one setting, so a cleared value leaves nothing behind. */
+export async function deleteSetting(db: SqlDatabase, key: string) {
+  await db.runAsync('DELETE FROM setting WHERE key = ?', key);
 }
 
 /** The tints a group can take, in the order new groups are given them. */

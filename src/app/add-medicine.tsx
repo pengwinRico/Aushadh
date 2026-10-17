@@ -11,6 +11,7 @@ import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, ScreenPadding, Spacing } from '@/constants/theme';
 import { useCabinet } from '@/context/cabinet';
+import { useSettings } from '@/context/settings';
 import { readMedicine, type MedicineReading } from '@/data/ai';
 import { pickMedicinePhoto, type PickedPhoto } from '@/data/medicine-photo';
 import { OTHER_CATEGORY } from '@/data/sql';
@@ -42,6 +43,7 @@ export default function AddMedicineScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { categories, addMedicine } = useCabinet();
+  const { aiKey } = useSettings();
   const [step, setStep] = useState<Step>('capture');
   const [typed, setTyped] = useState('');
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
@@ -77,6 +79,8 @@ export default function AddMedicineScreen() {
         photo: photo?.dataUrl,
         // The groups already on the shelf, so the model reuses one instead of inventing.
         groups: categories?.map((category) => category.name) ?? [],
+        // The key typed into Settings, when the user brought their own.
+        apiKey: aiKey,
       });
 
       // A group the AI left empty is no answer; the store files those under `Other`, and

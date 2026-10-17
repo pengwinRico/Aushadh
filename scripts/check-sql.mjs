@@ -19,12 +19,15 @@ import {
   categoryIdFor,
   configure,
   deleteMedicine,
+  deleteSetting,
   insertMedicine,
   migrate,
   nextCategoryTone,
   selectCategories,
   selectProfile,
+  selectSettings,
   upsertProfileName,
+  upsertSetting,
 } from '../src/data/sql.ts';
 
 /** `expo-sqlite`'s shape, over a synchronous in-process engine. */
@@ -98,6 +101,23 @@ await verify('the first name is stored, then replaced', async () => {
 
   await upsertProfileName(fresh, 'Meera P');
   assert.deepEqual(await selectProfile(fresh), { name: 'Meera P' });
+});
+
+await verify('a first run has no settings', async () => {
+  assert.deepEqual(await selectSettings(fresh), {});
+});
+
+await verify('a setting is stored, replaced and forgotten', async () => {
+  await upsertSetting(fresh, 'theme', 'dark');
+  await upsertSetting(fresh, 'ai-api-key', 'sk-test');
+
+  assert.deepEqual(await selectSettings(fresh), { theme: 'dark', 'ai-api-key': 'sk-test' });
+
+  await upsertSetting(fresh, 'theme', 'light');
+  assert.equal((await selectSettings(fresh)).theme, 'light');
+
+  await deleteSetting(fresh, 'ai-api-key');
+  assert.deepEqual(await selectSettings(fresh), { theme: 'light' });
 });
 
 await verify('an empty group still comes back, with no medicines', async () => {
@@ -282,6 +302,10 @@ await verify('upgrading keeps the stored name', async () => {
 await verify('upgrading adds the cabinet and reaches the current version', async () => {
   assert.equal(upgraded.db.prepare('PRAGMA user_version').get().user_version, DATABASE_VERSION);
   assert.equal((await selectCategories(upgraded)).length, 3);
+});
+
+await verify('upgrading adds an empty settings table', async () => {
+  assert.deepEqual(await selectSettings(upgraded), {});
 });
 
 await verify('a medicine with no photo reads back as an empty one', async () => {

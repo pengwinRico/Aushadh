@@ -6,6 +6,7 @@ import { PillButton } from '@/components/pill-button';
 import { QuestionInput } from '@/components/question-input';
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
+import { SettingsButton } from '@/components/settings-button';
 import { SummaryCard } from '@/components/summary-card';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -30,7 +31,11 @@ export default function AdviceScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Advice" subtitle="From your reports and medicines" />
+      <ScreenHeader
+        title="Advice"
+        subtitle="From your reports and medicines"
+        action={<SettingsButton />}
+      />
       <SummaryCard title="Your health summary" style={styles.summary}>
         <ThemedText type="body" themeColor="onPrimaryContainer">
           {healthSummary}

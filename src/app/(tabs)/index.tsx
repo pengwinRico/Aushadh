@@ -4,6 +4,7 @@ import { MetricCard } from '@/components/metric-card';
 import { PillButton } from '@/components/pill-button';
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
+import { SettingsButton } from '@/components/settings-button';
 import { Spacing } from '@/constants/theme';
 import { labParameters } from '@/data/placeholders';
 
@@ -15,6 +16,7 @@ export default function ReportsScreen() {
       <ScreenHeader
         title="Reports"
         subtitle={`${labParameters.length} parameters · updated today`}
+        action={<SettingsButton />}
       />
       <PillButton
         label="Scan a lab report"

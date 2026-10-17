@@ -5,6 +5,7 @@ import { CategoryCard } from '@/components/category-card';
 import { PillButton } from '@/components/pill-button';
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
+import { SettingsButton } from '@/components/settings-button';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useCabinet } from '@/context/cabinet';
@@ -25,6 +26,7 @@ export default function CabinetScreen() {
       <ScreenHeader
         title="Cabinet"
         subtitle={`${medicines} medicines · ${categories.length} categories`}
+        action={<SettingsButton />}
       />
       {categories.length === 0 ? (
         <ThemedText type="body" themeColor="textSecondary">

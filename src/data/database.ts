@@ -1,14 +1,19 @@
 import * as SQLite from 'expo-sqlite';
 
 import { medicineCategories, type Medicine } from '@/data/placeholders';
+import type { Settings } from '@/data/settings-types';
+import { DEFAULT_SETTINGS, SETTING_KEYS } from '@/data/settings-types';
 import {
   configure,
   deleteMedicine as deleteMedicineRow,
+  deleteSetting,
   insertMedicine,
   migrate,
   selectCategories,
   selectProfile,
+  selectSettings,
   upsertProfileName,
+  upsertSetting,
 } from '@/data/sql';
 
 /**
@@ -32,6 +37,37 @@ export async function readProfile() {
 /** Store the first name, replacing any earlier one. */
 export async function writeProfileName(name: string) {
   await upsertProfileName(await connect(), name);
+}
+
+/** The stored settings, with the defaults filled in where nothing has been saved. */
+export async function readSettings(): Promise<Settings> {
+  const rows = await selectSettings(await connect());
+
+  return {
+    // A stored value the app no longer understands falls back to the design's light.
+    theme: rows[SETTING_KEYS.theme] === 'dark' ? 'dark' : DEFAULT_SETTINGS.theme,
+    aiKey: rows[SETTING_KEYS.aiKey] ?? DEFAULT_SETTINGS.aiKey,
+  };
+}
+
+/**
+ * Store the settings that changed. An emptied AI key is deleted rather than saved as an
+ * empty string, so the store only ever holds values the app can use.
+ */
+export async function writeSettings(settings: Partial<Settings>) {
+  const db = await connect();
+
+  if (settings.theme) {
+    await upsertSetting(db, SETTING_KEYS.theme, settings.theme);
+  }
+
+  if (settings.aiKey !== undefined) {
+    if (settings.aiKey) {
+      await upsertSetting(db, SETTING_KEYS.aiKey, settings.aiKey);
+    } else {
+      await deleteSetting(db, SETTING_KEYS.aiKey);
+    }
+  }
 }
 
 /** The cabinet: every category in order, each with the medicines it holds. */
